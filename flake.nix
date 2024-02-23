@@ -26,6 +26,7 @@
       default = epimetheus;
     };
     devShell = with pkgs; stdenv.mkDerivation {
+      name = "epimetheus";
       buildInputs = [ m4 ];
     };
   });
