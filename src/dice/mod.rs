@@ -16,4 +16,23 @@ pub fn get_rng() -> impl rand::Rng + Send {
     StdRng::seed_from_u64(0x909090)
 }
 
+pub fn get_op_string_list() -> String {
+    lex::Op::list_of_ops()
+        .iter()
+        .fold(String::new(), |mut all, op| {
+            if !all.is_empty() {
+                all.push_str(", ");
+            }
+            all.push('`');
+            all.push_str(op.as_str());
+            all.push('`');
+            all
+        })
+}
+
+#[test]
+fn op_string_fits_in_field() {
+    assert!(get_op_string_list().len() <= 1024);
+}
+
 pub use eval::eval;

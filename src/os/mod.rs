@@ -16,7 +16,7 @@ pub async fn get_mem_usage() -> anyhow::Result<(u64, u64)> {
     Ok((virt * pgsize, rss * pgsize))
 }
 
-const BIPREFIXES: [&'static str; 5] = ["", "Ki", "Mi", "Gi", "Ti"];
+const BIPREFIXES: [&str; 5] = ["", "Ki", "Mi", "Gi", "Ti"];
 
 pub fn fmt_bibytes(size: u64) -> String {
     if size == 0 {

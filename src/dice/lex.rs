@@ -57,7 +57,7 @@ impl<'s> Iterator for Lexer<'s> {
                     continue
                 },
                 '0'..='9' => {
-                    while matches!(self.peek(), '0'..='9') {
+                    while self.peek().is_ascii_digit() {
                         self.advance();
                     }
                     self.tok(Token::Number(self.so_far().parse::<u64>().unwrap()))
@@ -138,8 +138,24 @@ const OP_MAP: phf::Map<char, Op> = phf_map! {
     '=' => Op::Assign,
 };
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Op {
+macro_rules! declare_ops {
+    { $($n:ident),+ $(,)? } => {
+        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+        pub enum Op {
+            $($n),+
+        }
+
+        impl Op {
+            pub fn list_of_ops() -> &'static [Op] {
+                return &[
+                    $(Self::$n),+
+                ]
+            }
+        }
+    }
+}
+
+declare_ops! {
     Plus,
     Minus,
     Star,
@@ -155,6 +171,28 @@ pub enum Op {
     Equal,
     Or,
     And,
+}
+
+impl Op {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Op::Plus => "+",
+            Op::Minus => "-",
+            Op::Star => "*",
+            Op::Percent => "%",
+            Op::LPar => "(",
+            Op::RPar => ")",
+            Op::Bang => "!",
+            Op::BangLPar => "!(",
+            Op::RParBang => ")!",
+            Op::Comma => ",",
+            Op::Semicolon => ";",
+            Op::Assign => "=",
+            Op::Equal => "==",
+            Op::Or => "||",
+            Op::And => "&&",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

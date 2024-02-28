@@ -1,3 +1,3 @@
 pub async fn yield_point() {
-    tokio::task::yield_now().await
+    tokio::task::yield_now().await;
 }

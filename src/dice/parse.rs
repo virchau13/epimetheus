@@ -77,7 +77,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
         self.lex.next().unwrap_or(Token::Eof)
     }
 
-    fn eat<'a>(&mut self, t: &Token<'a>) -> bool {
+    fn eat(&mut self, t: &Token<'_>) -> bool {
         if self.peek() == t {
             self.advance();
             true
