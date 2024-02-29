@@ -1,6 +1,6 @@
+use super::{escape_string_for_discord_inplace, LazyValue};
 use async_recursion::async_recursion;
 use rug::Integer;
-use super::{AsyncTryInto, LazyValue};
 
 macro_rules! dimensional_broadcast {
     ($a:ident, $f:expr, $b:ident) => {
@@ -50,6 +50,7 @@ pub enum RVal {
     Int(Integer),
     Float(f64),
     Array(Vec<LazyValue>),
+    Char(char),
 }
 
 impl RVal {
@@ -62,6 +63,7 @@ impl RVal {
             RVal::Int(v) => v.cmp0() != std::cmp::Ordering::Equal,
             RVal::Float(f) => *f != 0.,
             RVal::Array(a) => !a.is_empty(),
+            RVal::Char(c) => *c != '\0',
         }
     }
 
@@ -79,6 +81,7 @@ impl RVal {
                 }
             }
             RVal::Array(_) => Err("cannot cast array to integer".to_string()),
+            RVal::Char(c) => Ok(c as i32),
         }
     }
     pub async fn op_eq(self, other: RVal) -> RVal {
@@ -89,18 +92,21 @@ impl RVal {
             (RVal::Array(mut a), v) => broadcast!(#a, LazyValue::op_eq, v).await,
             (v, RVal::Array(mut a)) => broadcast!(v, LazyValue::op_eq, #a).await,
             (RVal::Int(n), RVal::Int(m)) => RVal::Int((n == m).into()),
+            (RVal::Char(c), RVal::Char(d)) => RVal::Int((c == d).into()),
+            (RVal::Char(c), RVal::Int(n)) | (RVal::Int(n), RVal::Char(c)) => {
+                RVal::Int((n == (c as u32)).into())
+            }
+            (RVal::Char(c), RVal::Float(f)) | (RVal::Float(f), RVal::Char(c)) => {
+                let f = RVal::norm_float(f);
+                RVal::Int((f == (c as u32 as f64)).into())
+            }
             (RVal::Int(n), RVal::Float(f)) | (RVal::Float(f), RVal::Int(n)) => {
                 let f = RVal::norm_float(f);
                 RVal::Int((n == f).into())
             }
-            (RVal::Float(a), RVal::Float(b)) => RVal::Int(
-                if RVal::norm_float(a) == RVal::norm_float(b) {
-                    1
-                } else {
-                    0
-                }
-                .into(),
-            ),
+            (RVal::Float(a), RVal::Float(b)) => {
+                RVal::Int((RVal::norm_float(a) == RVal::norm_float(b)).into())
+            }
         }
     }
     pub async fn op_or(self, other: RVal) -> RVal {
@@ -132,7 +138,8 @@ impl RVal {
                     let _ = std::mem::replace(xr, x);
                 }
                 RVal::Array(a)
-            }
+            },
+            RVal::Char(c) => RVal::Int((-(c as i32)).into()),
         }
     }
 
@@ -142,12 +149,21 @@ impl RVal {
             RVal::Int(n) => *s += &format!("{n}"),
             RVal::Float(a) => *s += &format!("{a}"),
             RVal::Array(arr) => {
-                s.push('(');
-                if arr.len() == 1 {
-                    // a single element must be enlisted
-                    s.push(',');
-                    arr[0].display(s).await;
+                if arr.len() == 0 {
+                    // empty array
+                    *s += "[]";
+                } else if arr.iter().all(|x| matches!(x, LazyValue::Char(_))) {
+                    // string
+                    let mut tmp = String::new();
+                    tmp.reserve(arr.len());
+                    for x in arr.iter() {
+                        let LazyValue::Char(cr) = x else { unreachable!("we checked these were all-characters already") };
+                        tmp.push(*cr);
+                    }
+                    escape_string_for_discord_inplace(&tmp, s);
                 } else {
+                    // general array
+                    s.push('[');
                     let mut i = arr.iter();
                     if let Some(v) = i.next() {
                         v.display(s).await;
@@ -157,9 +173,10 @@ impl RVal {
                             el.display(s).await;
                         }
                     }
+                    s.push(']');
                 }
-                s.push(')');
-            }
+            },
+            RVal::Char(c) => *s += &format!("'{c}'"),
         }
     }
 }
@@ -185,30 +202,9 @@ impl From<u32> for RVal {
     }
 }
 
-impl<T> AsyncTryInto<Vec<T>> for RVal
-where
-    RVal: AsyncTryInto<T>,
-    String: From<<RVal as AsyncTryInto<T>>::Error>,
-{
-    type Error = String;
-
-    async fn async_try_into(self) -> Result<Vec<T>, Self::Error> {
-        match self {
-            RVal::Int(_) => Err("integer cannot be casted to array".to_string()),
-            RVal::Float(_) => Err("number cannot be casted to array".to_string()),
-            RVal::Array(a) => {
-                let mut res = Vec::new();
-                res.reserve_exact(a.len());
-                for x in a {
-                    res.push(
-                        <RVal as AsyncTryInto<T>>::async_try_into(x.resolve().await)
-                            .await
-                            .map_err(String::from)?,
-                    );
-                }
-                Ok(res)
-            }
-        }
+impl From<&str> for RVal {
+    fn from(value: &str) -> Self {
+        RVal::Array(value.chars().map(LazyValue::Char).collect())
     }
 }
 
@@ -218,6 +214,7 @@ impl From<RVal> for LazyValue {
             RVal::Int(n) => LazyValue::Int(n),
             RVal::Float(f) => LazyValue::Float(f),
             RVal::Array(a) => LazyValue::Array(a),
+            RVal::Char(c) => LazyValue::Char(c),
         }
     }
 }

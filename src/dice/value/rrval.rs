@@ -52,6 +52,7 @@ pub enum RRVal {
     Int(Integer),
     Float(f64),
     Array(Vec<RRVal>),
+    Char(char),
 }
 
 impl From<RRVal> for RVal {
@@ -59,6 +60,7 @@ impl From<RRVal> for RVal {
         match val {
             RRVal::Int(n) => RVal::Int(n),
             RRVal::Float(f) => RVal::Float(f),
+            RRVal::Char(c) => RVal::Char(c),
             RRVal::Array(a) => RVal::Array(a.into_iter().map(|x| x.into()).collect()),
         }
     }
@@ -69,6 +71,7 @@ impl From<RRVal> for LazyValue {
         match val {
             RRVal::Int(n) => LazyValue::Int(n),
             RRVal::Float(f) => LazyValue::Float(f),
+            RRVal::Char(c) => LazyValue::Char(c),
             RRVal::Array(a) => LazyValue::Array(a.into_iter().map(|x| x.into()).collect()),
         }
     }
@@ -93,7 +96,18 @@ impl RRVal {
                 RRVal::Float(f + n.az::<f64>())
             }
             (RRVal::Float(a), RRVal::Float(b)) => RRVal::Float(a + b),
-            (RRVal::Array(mut a), RRVal::Array(b)) => dimensional_broadcast!(a, RRVal::add, b).await,
+            (RRVal::Char(c), RRVal::Char(d)) => {
+                RRVal::Char(char::from_u32(c as u32 + d as u32).unwrap_or(' '))
+            }
+            (RRVal::Char(c), RRVal::Int(n)) | (RRVal::Int(n), RRVal::Char(c)) => {
+                RRVal::Int(n + c as u32)
+            }
+            (RRVal::Float(f), RRVal::Char(c)) | (RRVal::Char(c), RRVal::Float(f)) => {
+                RRVal::Float(f + (c as u32 as f64))
+            }
+            (RRVal::Array(mut a), RRVal::Array(b)) => {
+                dimensional_broadcast!(a, RRVal::add, b).await
+            }
             (RRVal::Array(mut a), v) => broadcast!(#a, RRVal::add, v).await,
             (v, RRVal::Array(mut a)) => broadcast!(v, RRVal::add, #a).await,
         }
@@ -103,11 +117,31 @@ impl RRVal {
     pub async fn sub(self, rhs: RRVal) -> RRVal {
         match (self, rhs) {
             (RRVal::Int(n), RRVal::Int(m)) => RRVal::Int(n - m),
-            (RRVal::Int(n), RRVal::Float(f)) | (RRVal::Float(f), RRVal::Int(n)) => {
+            (RRVal::Int(n), RRVal::Float(f)) => {
+                RRVal::Float(n.az::<f64>() - f)
+            },
+            (RRVal::Float(f), RRVal::Int(n)) => {
                 RRVal::Float(f - n.az::<f64>())
             }
             (RRVal::Float(a), RRVal::Float(b)) => RRVal::Float(a - b),
-            (RRVal::Array(mut a), RRVal::Array(b)) => dimensional_broadcast!(a, RRVal::sub, b).await,
+            (RRVal::Char(c), RRVal::Char(d)) => {
+                RRVal::Char(char::from_u32(c as u32 - d as u32).unwrap_or(' '))
+            }
+            (RRVal::Char(c), RRVal::Int(n)) => {
+                RRVal::Int((c as u32) - n)
+            }
+            (RRVal::Int(n), RRVal::Char(c)) => {
+                RRVal::Int(n - (c as u32))
+            }
+            (RRVal::Float(f), RRVal::Char(c)) => {
+                RRVal::Float(f - (c as u32 as f64))
+            },
+            (RRVal::Char(c), RRVal::Float(f)) => {
+                RRVal::Float((c as u32 as f64) - f)
+            }
+            (RRVal::Array(mut a), RRVal::Array(b)) => {
+                dimensional_broadcast!(a, RRVal::sub, b).await
+            }
             (RRVal::Array(mut a), v) => broadcast!(#a, RRVal::sub, v).await,
             (v, RRVal::Array(mut a)) => broadcast!(v, RRVal::sub, #a).await,
         }
@@ -121,7 +155,18 @@ impl RRVal {
                 RRVal::Float(f * n.az::<f64>())
             }
             (RRVal::Float(a), RRVal::Float(b)) => RRVal::Float(a * b),
-            (RRVal::Array(mut a), RRVal::Array(b)) => dimensional_broadcast!(a, RRVal::mul, b).await,
+            (RRVal::Char(c), RRVal::Char(d)) => {
+                RRVal::Char(char::from_u32(c as u32 * d as u32).unwrap_or(' '))
+            }
+            (RRVal::Char(c), RRVal::Int(n)) | (RRVal::Int(n), RRVal::Char(c)) => {
+                RRVal::Int(n * (c as u32))
+            }
+            (RRVal::Float(f), RRVal::Char(c)) | (RRVal::Char(c), RRVal::Float(f)) => {
+                RRVal::Float(f * (c as u32 as f64))
+            }
+            (RRVal::Array(mut a), RRVal::Array(b)) => {
+                dimensional_broadcast!(a, RRVal::mul, b).await
+            }
             (RRVal::Array(mut a), v) => broadcast!(#a, RRVal::mul, v).await,
             (v, RRVal::Array(mut a)) => broadcast!(v, RRVal::mul, #a).await,
         }
@@ -134,9 +179,32 @@ impl RRVal {
             (RRVal::Int(n), RRVal::Float(f)) => RRVal::Float(n.az::<f64>() / f),
             (RRVal::Float(f), RRVal::Int(n)) => RRVal::Float(f / n.az::<f64>()),
             (RRVal::Float(a), RRVal::Float(b)) => RRVal::Float(a / b),
-            (RRVal::Array(mut a), RRVal::Array(b)) => dimensional_broadcast!(a, RRVal::div, b).await,
+            (RRVal::Char(c), RRVal::Char(d)) => {
+                RRVal::Float(c as u32 as f64 / d as u32 as f64)
+            }
+            (RRVal::Char(c), RRVal::Int(n)) => {
+                RRVal::Float(c as u32 as f64 / n.az::<f64>())
+            }
+            (RRVal::Int(n), RRVal::Char(c)) => {
+                RRVal::Float(n.az::<f64>() / c as u32 as f64)
+            }
+            (RRVal::Float(f), RRVal::Char(c)) => {
+                RRVal::Float(f / c as u32 as f64)
+            },
+            (RRVal::Char(c), RRVal::Float(f)) => {
+                RRVal::Float((c as u32 as f64) / f)
+            }
+            (RRVal::Array(mut a), RRVal::Array(b)) => {
+                dimensional_broadcast!(a, RRVal::div, b).await
+            }
             (RRVal::Array(mut a), v) => broadcast!(#a, RRVal::div, v).await,
             (v, RRVal::Array(mut a)) => broadcast!(v, RRVal::div, #a).await,
         }
+    }
+}
+
+impl From<&str> for RRVal {
+    fn from(value: &str) -> Self {
+        RRVal::Array(value.chars().map(RRVal::Char).collect())
     }
 }

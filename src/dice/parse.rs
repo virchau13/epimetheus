@@ -19,6 +19,7 @@ pub trait UnusedParseIns {
     async fn keep_lowest(&mut self, dice: Self::Value, keep: Self::Value)
         -> Result<Self::Value, String>;
     async fn explode(&mut self, dice: Self::Value, keep: Self::Value) -> Result<Self::Value, String>;
+    async fn mk_array(&mut self, arr: Vec<Self::Value>) -> Result<Self::Value, String>;
 }
 
 pub struct Parser<'s, I: ParseIns> {
@@ -88,7 +89,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
 
     fn expect(&mut self, t: &Token<'_>) -> Result<(), String> {
         if !self.eat(t) {
-            Err(format!("expected {:?} but got {:?}", t, self.peek()))
+            Err(format!("expected {} but got {}", t, self.peek()))
         } else {
             Ok(())
         }
@@ -102,6 +103,26 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
     async fn expr(&mut self, min_prec: u8) -> pres!() {
         let t = self.peek().clone();
         let mut first = match t {
+            Token::Op(Op::LBrack) => {
+                self.advance();
+                if self.eat(&Token::Op(Op::RBrack)) {
+                    self.ins.mk_array(Vec::new()).await?
+                } else {
+                    let (_, comma_rp) = infix_prec(Op::Comma).unwrap();
+                    let mut arr = Vec::new();
+                    loop {
+                        arr.push(self.expr(comma_rp).await?);
+                        if self.eat(&Token::Op(Op::RBrack)) {
+                            break;
+                        }
+                        self.expect(&Token::Op(Op::Comma))?;
+                        if self.eat(&Token::Op(Op::RBrack)) {
+                            break;
+                        }
+                    }
+                    self.ins.mk_array(arr).await?
+                }
+            },
             Token::Op(op) => {
                 // TODO treat BangLPar and RParBang as logical not of (expr)
                 self.advance();
@@ -113,7 +134,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
                     self.expect(&Token::Op(Op::RPar))?;
                     inner
                 } else {
-                    return Err(format!("invalid prefix operator {:?}", t));
+                    return Err(format!("invalid prefix operator `{}`", t));
                 }
             }
             Token::Ident("d") => {
@@ -188,9 +209,9 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
                     return Ok(first);
                 }
                 Token::Eof => return Ok(first),
-                _l => {
-                    /* probably literal */
-                    todo!()
+                bad => {
+                    // unexpected token
+                    return Err(format!("unexpected token `{}`", bad));
                 }
             };
         }

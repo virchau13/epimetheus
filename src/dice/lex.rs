@@ -1,5 +1,7 @@
 use phf::phf_map;
 
+use super::value::escape_string_for_discord;
+
 pub struct Lexer<'s> {
     s: &'s str,
     prev_s: &'s str,
@@ -68,6 +70,26 @@ impl<'s> Iterator for Lexer<'s> {
                     }
                     self.tok(Token::Ident(self.so_far()))
                 },
+                '\'' => {
+                    self.advance();
+                    let c = self.peek();
+                    self.advance();
+                    // TODO support escapes
+                    if !self.eat('\'') {
+                        todo!()
+                    }
+                    self.tok(Token::Char(c))
+                }
+                '"' => {
+                    self.advance();
+                    let mut s = String::new();
+                    // TODO escapes
+                    while !self.eat('"') {
+                        s.push(self.peek());
+                        self.advance();
+                    }
+                    self.tok(Token::Str(s))
+                }
                 '!' => {
                     self.advance();
                     let n = self.peek();
@@ -117,7 +139,11 @@ impl<'s> Iterator for Lexer<'s> {
                         self.advance();
                         self.tok(Token::Op(*v))
                     } else {
-                        None
+                        if c != '\0' {
+                            self.tok(Token::Unexpected(c))
+                        } else {
+                            None
+                        }
                     }
                 }
             };
@@ -136,6 +162,8 @@ const OP_MAP: phf::Map<char, Op> = phf_map! {
     ',' => Op::Comma,
     ';' => Op::Semicolon,
     '=' => Op::Assign,
+    '[' => Op::LBrack,
+    ']' => Op::RBrack,
 };
 
 macro_rules! declare_ops {
@@ -171,6 +199,8 @@ declare_ops! {
     Equal,
     Or,
     And,
+    LBrack,
+    RBrack
 }
 
 impl Op {
@@ -191,6 +221,8 @@ impl Op {
             Op::Equal => "==",
             Op::Or => "||",
             Op::And => "&&",
+            Op::LBrack => "[",
+            Op::RBrack => "]"
         }
     }
 }
@@ -200,7 +232,24 @@ pub enum Token<'s> {
     Number(u64),
     Op(Op),
     Ident(&'s str),
+    Str(String),
+    Char(char),
+    Unexpected(char),
     Eof,
+}
+
+impl<'s> std::fmt::Display for Token<'s> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Token::Number(n) => n.fmt(f),
+            Token::Op(op) => write!(f, "{}", op.as_str()),
+            Token::Ident(id) => write!(f, "{}", id),
+            Token::Str(s) => write!(f, "{}", escape_string_for_discord(&s)), 
+            Token::Char(c) => write!(f, "'{}'", c.escape_default()),
+            Token::Unexpected(c) => write!(f, "{}", c.escape_default()),
+            Token::Eof => write!(f, "end-of-input")
+        }
+    }
 }
 
 #[test]

@@ -7,6 +7,7 @@ use super::{resolve_dice, RRVal, RVal};
 pub enum LazyValue {
     Int(Integer),
     Float(f64),
+    Char(char),
     Array(Vec<LazyValue>),
     LazyDice {
         num: u32,
@@ -65,6 +66,7 @@ impl LazyValue {
             LazyValue::Int(n) => RVal::Int(n),
             LazyValue::Float(f) => RVal::Float(f),
             LazyValue::Array(a) => RVal::Array(a),
+            LazyValue::Char(c) => RVal::Char(c),
             LazyValue::LazyDice {
                 num,
                 sides,
@@ -80,6 +82,7 @@ impl LazyValue {
             LazyValue::Int(n) => RRVal::Int(n),
             LazyValue::Float(f) => RRVal::Float(f),
             LazyValue::Array(a) => RRVal::Array(RRVal::deep_resolve_vec(a).await),
+            LazyValue::Char(c) => RRVal::Char(c),
             LazyValue::LazyDice {
                 num,
                 sides,
@@ -134,8 +137,8 @@ async fn display_test() {
         }
     }
 
-    eq!(vec![2], "(,2)");
-    eq!(vec![1,2,3],"(1, 2, 3)");
-    eq!(vec![vec![1,2],vec![3],vec![4,5]],"((1, 2), (,3), (4, 5))");
-    eq!(Vec::<i32>::new(), "()");
+    eq!(vec![2], "[2]");
+    eq!(vec![1,2,3],"[1, 2, 3]");
+    eq!(vec![vec![1,2],vec![3],vec![4,5]],"[[1, 2], [3], [4, 5]]");
+    eq!(Vec::<i32>::new(), "[]");
 }

@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use serenity::all::{GatewayIntents, Message, MessageReference};
-use serenity::builder::{CreateEmbed, CreateMessage};
+use serenity::builder::{CreateEmbed, CreateEmbedFooter, CreateMessage};
 use serenity::client::{Context, EventHandler};
 use serenity::Client;
 
@@ -66,11 +66,11 @@ impl Handler {
                                     reply(&ctx, msg, CreateMessage::new().content(s)).await?;
                                 }
                                 Err(e) => {
-                                    reply(&ctx, msg, CreateMessage::new().content(format!("evaluation error: {e}"))).await?;
+                                    reply(&ctx, msg, CreateMessage::new().content(format!("Evaluation error: {e}"))).await?;
                                 }
                             },
                             Err(_) => {
-                                reply(&ctx, msg, CreateMessage::new().content("evaluation exceeded max duration of 50 milliseconds, execution halted")).await?;
+                                reply(&ctx, msg, CreateMessage::new().content("Evaluation exceeded max duration of 50 milliseconds, execution halted")).await?;
                             }
                         }
                     }
@@ -111,7 +111,8 @@ impl Handler {
                                     `%roll d10!(9,10)!`: Roll a d10 that explodes on outcomes of either 9 or 10.
                                     `%roll d(1,4,5)`: Roll a dice with 3 custom sides: one side with 1, one side with 4, and one side with 5.
                                 "#})
-                                .field("Regular operators", op_list, false);
+                                .field("Regular operators", op_list, false)
+                                .footer(CreateEmbedFooter::new("Detailed help pages for each operator coming Soon™."));
                             let builder = CreateMessage::new().embed(embed);
                             // TODO pages
                             reply(&ctx, msg, builder).await?;

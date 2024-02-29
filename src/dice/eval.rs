@@ -1,10 +1,10 @@
 use crate::dice::{
     lex::{Op, Token},
     parse::ParseIns,
-    value::{array_partition_idx, RVal, LazyValue},
+    value::{array_partition_idx, LazyValue, RVal},
 };
 
-use super::value::RRVal;
+use super::{value::RRVal, vec_async_map, vec_into};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Evaluator {}
@@ -21,9 +21,13 @@ impl ParseIns for Evaluator {
     async fn literal<'t>(&self, v: crate::dice::lex::Token<'t>) -> Result<Self::Value, String> {
         match v {
             Token::Number(x) => Ok(LazyValue::Int(x.into())),
+            Token::Char(c) => Ok(LazyValue::Char(c)),
+            Token::Str(s) => Ok(LazyValue::Array(
+                s.chars().map(|x| LazyValue::Char(x)).collect(),
+            )),
             Token::Ident(_i) => todo!("resolve identifiers"),
             Token::Eof => Err("incomplete expression".to_string()),
-            _ => Err(format!("invalid literal {:?}", v)),
+            _ => Err(format!("invalid literal `{}`", v)),
         }
     }
 
@@ -62,7 +66,7 @@ impl ParseIns for Evaluator {
             Op::And => {
                 todo!()
             }
-            _ => Err(format!("invalid infix operator {:?}", c)),
+            _ => Err(format!("invalid infix operator `{}`", c.as_str())),
         }
     }
 
@@ -74,7 +78,7 @@ impl ParseIns for Evaluator {
                 /* Enlist! */
                 Ok(LazyValue::Array(vec![inner]))
             }
-            _ => Err(format!("invalid prefix operator {:?}", c)),
+            _ => Err(format!("invalid prefix operator `{}`", c.as_str())),
         }
     }
 
@@ -103,16 +107,19 @@ impl ParseIns for Evaluator {
                             },
                         })
                     }
-                    LazyValue::Int(_) => Err("factorial isn't implemented yet, sorry :P".to_string()),
+                    LazyValue::Int(_) => {
+                        Err("factorial isn't implemented yet, sorry :P".to_string())
+                    }
                     LazyValue::Float(_) => {
                         Err("floating point factorial isn't implemented yet, sorry :P".to_string())
                     }
+                    LazyValue::Char(_) => Err("you can't explode a character".to_string()),
                     LazyValue::Array(_) => {
                         Err("the operator `!` is not defined on arrays yet".to_string())
                     }
                 }
             }
-            _ => Err(format!("invalid suffix operator {:?}", c)),
+            _ => Err(format!("invalid suffix operator `{}`", c.as_str())),
         }
     }
 
@@ -184,9 +191,19 @@ impl ParseIns for Evaluator {
             }),
             LazyValue::Int(_) => Err("keep-highest operation is invalid on integers".to_string()),
             LazyValue::Float(_) => Err("keep-highest operation is invalid on numbers".to_string()),
+            LazyValue::Char(_) => {
+                Err("keep-highest operation is invalid on characters".to_string())
+            }
             LazyValue::Array(a) => {
                 let idx = a.len() - kh as usize;
-                Ok(LazyValue::Array(array_partition_idx(a, idx, false).await?))
+                Ok(LazyValue::Array(vec_into(
+                    array_partition_idx(
+                        vec_async_map(a, LazyValue::deep_resolve).await,
+                        idx,
+                        false,
+                    )
+                    .await?,
+                )))
             }
         }
     }
@@ -217,9 +234,13 @@ impl ParseIns for Evaluator {
             }),
             LazyValue::Int(_) => Err("keep-lowest operation is invalid on integers".to_string()),
             LazyValue::Float(_) => Err("keep-lowest operation is invalid on numbers".to_string()),
+            LazyValue::Char(_) => Err("keep-lowest operation is invalid on characters".to_string()),
             LazyValue::Array(a) => {
                 let idx = kl as usize;
-                Ok(LazyValue::Array(array_partition_idx(a, idx, true).await?))
+                Ok(LazyValue::Array(vec_into(
+                    array_partition_idx(vec_async_map(a, LazyValue::deep_resolve).await, idx, true)
+                        .await?,
+                )))
             }
         }
     }
@@ -233,6 +254,7 @@ impl ParseIns for Evaluator {
             LazyValue::Int(_) => Err("cannot explode integers".to_string()),
             LazyValue::Float(_) => Err("cannot explode numbers".to_string()),
             LazyValue::Array(_) => Err("cannot explode arrays".to_string()),
+            LazyValue::Char(_) => Err("cannot explode characters".to_string()),
             LazyValue::LazyDice {
                 num,
                 sides,
@@ -245,22 +267,19 @@ impl ParseIns for Evaluator {
                 lowest_idx,
                 highest_idx,
                 explode: {
-                    let mut res = match inner.resolve().await {
-                        r @ (RVal::Int(_) | RVal::Float(_)) => {
-                            match r.into_i32().ok().and_then(|x| u32::try_from(x).ok()) {
-                                Some(x) => vec![RRVal::Int(x.into())],
-                                None => vec![],
-                            }
-                        }
-                        RVal::Array(a) => {
-                            RRVal::deep_resolve_vec(a).await
-                        }
+                    let mut res = match inner.deep_resolve().await {
+                        RRVal::Array(a) => a,
+                        r => vec![r],
                     };
                     explode.append(&mut res);
                     explode
                 },
             }),
         }
+    }
+
+    async fn mk_array(&mut self, arr: Vec<Self::Value>) -> Result<Self::Value, String> {
+        Ok(LazyValue::Array(arr))
     }
 }
 
@@ -272,7 +291,7 @@ pub async fn eval(s: &str) -> Result<RVal, String> {
 }
 
 #[tokio::test]
-async fn eval_test() {
+async fn eval_positive_test() {
     macro_rules! good {
         ($x:expr, $y:literal / $z:literal) => {
             let m;
@@ -291,15 +310,6 @@ async fn eval_test() {
         };
         ($x:expr, #$y:expr) => {
             assert_eq!(eval($x).await.unwrap(), $y.into())
-        };
-    }
-
-    macro_rules! bad {
-        ($x:expr) => {
-            let e = eval($x).await;
-            if e.is_ok() {
-                panic!("no error thrown for {:?}", e.unwrap());
-            }
         };
     }
 
@@ -330,7 +340,6 @@ async fn eval_test() {
 
     good!("3d4", 7);
     good!("15d1", 15);
-    bad!("4810954d1093491");
     good!("65535d65535", 2143601837);
     good!("-3d4+7", 0);
 
@@ -368,4 +377,32 @@ async fn eval_test() {
     good!("d(,2)", 2);
     good!("d(0,0,0,0)", 0);
     good!("d(0,0,0,0,0,7,0,0,0,0,0)", 0);
+
+    good!("[1,2]", #vec![1,2]);
+    good!("[1]", #vec![1]);
+    good!("[]", #Vec::<i32>::new());
+    good!("[1,]", #vec![1]);
+    good!("[1, 2,]", #vec![1,2]);
+
+    good!(r#"d["left", "right", "up", "down"]"#, #"up");
+    // This is *intentional*. (For now.)
+    good!("d[]", 0);
+    good!("d0", 0);
+}
+
+#[tokio::test]
+async fn eval_negative_test() {
+    macro_rules! bad {
+        ($x:expr) => {
+            let e = eval($x).await;
+            if e.is_ok() {
+                panic!("no error thrown for {:?}", e.unwrap());
+            }
+        };
+    }
+
+    bad!("4810954d1093491"); // dice x > 65535
+    bad!("2 2");
+    bad!("$2");
+    bad!("2$");
 }
