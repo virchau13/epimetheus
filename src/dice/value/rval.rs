@@ -149,7 +149,7 @@ impl RVal {
             RVal::Int(n) => *s += &format!("{n}"),
             RVal::Float(a) => *s += &format!("{a}"),
             RVal::Array(arr) => {
-                if arr.len() == 0 {
+                if arr.is_empty() {
                     // empty array
                     *s += "[]";
                 } else if arr.iter().all(|x| matches!(x, LazyValue::Char(_))) {

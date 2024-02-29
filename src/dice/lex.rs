@@ -138,12 +138,10 @@ impl<'s> Iterator for Lexer<'s> {
                     if let Some(v) = OP_MAP.get(&c) {
                         self.advance();
                         self.tok(Token::Op(*v))
-                    } else {
-                        if c != '\0' {
+                    } else if c != '\0' {
                             self.tok(Token::Unexpected(c))
-                        } else {
-                            None
-                        }
+                    } else {
+                        None
                     }
                 }
             };
@@ -244,7 +242,7 @@ impl<'s> std::fmt::Display for Token<'s> {
             Token::Number(n) => n.fmt(f),
             Token::Op(op) => write!(f, "{}", op.as_str()),
             Token::Ident(id) => write!(f, "{}", id),
-            Token::Str(s) => write!(f, "{}", escape_string_for_discord(&s)), 
+            Token::Str(s) => write!(f, "{}", escape_string_for_discord(s)), 
             Token::Char(c) => write!(f, "'{}'", c.escape_default()),
             Token::Unexpected(c) => write!(f, "{}", c.escape_default()),
             Token::Eof => write!(f, "end-of-input")

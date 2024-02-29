@@ -165,7 +165,7 @@ pub async fn array_partition_idx(
     let low_elem = &a[*low_idx].clone();
     Ok(a.into_iter()
         .filter(|a| {
-            let is_lower = cmp_rrvals(&a, &low_elem) == std::cmp::Ordering::Less;
+            let is_lower = cmp_rrvals(a, low_elem) == std::cmp::Ordering::Less;
             if take_lower {
                 is_lower
             } else {

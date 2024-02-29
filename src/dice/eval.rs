@@ -23,7 +23,7 @@ impl ParseIns for Evaluator {
             Token::Number(x) => Ok(LazyValue::Int(x.into())),
             Token::Char(c) => Ok(LazyValue::Char(c)),
             Token::Str(s) => Ok(LazyValue::Array(
-                s.chars().map(|x| LazyValue::Char(x)).collect(),
+                s.chars().map(LazyValue::Char).collect(),
             )),
             Token::Ident(_i) => todo!("resolve identifiers"),
             Token::Eof => Err("incomplete expression".to_string()),
