@@ -41,6 +41,7 @@ impl ParseIns for Evaluator {
             Op::Plus => Ok(left.add(right).await),
             Op::Minus => Ok(left.sub(right).await),
             Op::Star => Ok(left.mul(right).await),
+            Op::Slash => Ok(left.fdiv(right).await),
             Op::Comma => match (left.resolve().await, right.resolve().await) {
                 (RVal::Array(mut a), RVal::Array(mut b)) => {
                     a.append(&mut b);
@@ -84,7 +85,7 @@ impl ParseIns for Evaluator {
 
     async fn sfxop(&self, inner: Self::Value, c: Op) -> Result<Self::Value, String> {
         match c {
-            Op::Percent => Ok(inner.div(100.into()).await),
+            Op::Percent => Ok(inner.fdiv(100.into()).await),
             Op::Bang => {
                 /* explode! */
                 match inner {
@@ -388,6 +389,9 @@ async fn eval_positive_test() {
     // This is *intentional*. (For now.)
     good!("d[]", 0);
     good!("d0", 0);
+
+    good!("(3/4)*100", 75);
+    good!("(1/2)*100", 50);
 }
 
 #[tokio::test]

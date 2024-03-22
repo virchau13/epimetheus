@@ -173,7 +173,7 @@ impl RRVal {
     }
 
     #[async_recursion]
-    pub async fn div(self, rhs: RRVal) -> RRVal {
+    pub async fn fdiv(self, rhs: RRVal) -> RRVal {
         match (self, rhs) {
             (RRVal::Int(n), RRVal::Int(m)) => RRVal::Float(n.az::<f64>() / m.az::<f64>()),
             (RRVal::Int(n), RRVal::Float(f)) => RRVal::Float(n.az::<f64>() / f),
@@ -195,10 +195,10 @@ impl RRVal {
                 RRVal::Float((c as u32 as f64) / f)
             }
             (RRVal::Array(mut a), RRVal::Array(b)) => {
-                dimensional_broadcast!(a, RRVal::div, b).await
+                dimensional_broadcast!(a, RRVal::fdiv, b).await
             }
-            (RRVal::Array(mut a), v) => broadcast!(#a, RRVal::div, v).await,
-            (v, RRVal::Array(mut a)) => broadcast!(v, RRVal::div, #a).await,
+            (RRVal::Array(mut a), v) => broadcast!(#a, RRVal::fdiv, v).await,
+            (v, RRVal::Array(mut a)) => broadcast!(v, RRVal::fdiv, #a).await,
         }
     }
 }

@@ -43,10 +43,10 @@ impl LazyValue {
             .into()
     }
 
-    pub async fn div(self, rhs: LazyValue) -> LazyValue {
+    pub async fn fdiv(self, rhs: LazyValue) -> LazyValue {
         self.deep_resolve()
             .await
-            .div(rhs.deep_resolve().await)
+            .fdiv(rhs.deep_resolve().await)
             .await
             .into()
     }

@@ -35,6 +35,7 @@ macro_rules! pres {
 fn infix_prec(op: Op) -> Option<(u8, u8)> {
     Some(match op {
         Op::Star => (15, 16),
+        Op::Slash => (15, 16),
         Op::Plus => (13, 14),
         Op::Minus => (13, 14),
         Op::Comma => (9, 10),

@@ -162,6 +162,7 @@ const OP_MAP: phf::Map<char, Op> = phf_map! {
     '=' => Op::Assign,
     '[' => Op::LBrack,
     ']' => Op::RBrack,
+    '/' => Op::Slash,
 };
 
 macro_rules! declare_ops {
@@ -198,7 +199,8 @@ declare_ops! {
     Or,
     And,
     LBrack,
-    RBrack
+    RBrack,
+    Slash
 }
 
 impl Op {
@@ -220,7 +222,8 @@ impl Op {
             Op::Or => "||",
             Op::And => "&&",
             Op::LBrack => "[",
-            Op::RBrack => "]"
+            Op::RBrack => "]",
+            Op::Slash => "/",
         }
     }
 }
