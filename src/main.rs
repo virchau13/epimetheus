@@ -109,7 +109,8 @@ impl Handler {
                                     `%roll 2d20H1`: Roll 2 20-sided dice and choose the **h**ighest one. (Advantage. For disadvantage, use `L`.)
                                     `%roll d2!`: Roll an exploding d2.
                                     `%roll d10!(9,10)!`: Roll a d10 that explodes on outcomes of either 9 or 10.
-                                    `%roll d(1,4,5)`: Roll a dice with 3 custom sides: one side with 1, one side with 4, and one side with 5.
+                                    `%roll d[1,4,5]`: Roll a dice with 3 custom sides: one side with 1, one side with 4, and one side with 5.
+                                    `%roll d["yes","no","maybe"]`: Choose between the outcomes "yes", "no", and "maybe" at random.
                                 "#})
                                 .field("Regular operators", op_list, false)
                                 .footer(CreateEmbedFooter::new("Detailed help pages for each operator coming Soon™."));
