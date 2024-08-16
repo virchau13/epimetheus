@@ -1,7 +1,8 @@
-use async_recursion::async_recursion;
 use rug::Integer;
 
-use super::{resolve_dice, RRVal, RVal};
+use crate::dice::eval::Evaluator;
+
+use super::{resolve_dice, Place, RRVal, RVal, ResolveError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LazyValue {
@@ -9,6 +10,9 @@ pub enum LazyValue {
     Float(f64),
     Char(char),
     Array(Vec<LazyValue>),
+    /// A place (aka lvalue) is a reference to some variable (and possibly array indexes in to that
+    /// variable).
+    Place(Place),
     LazyDice {
         num: u32,
         sides: Vec<RRVal>,
@@ -19,54 +23,13 @@ pub enum LazyValue {
 }
 
 impl LazyValue {
-    pub async fn add(self, rhs: LazyValue) -> LazyValue {
-        self.deep_resolve()
-            .await
-            .add(rhs.deep_resolve().await)
-            .await
-            .into()
-    }
-
-    pub async fn sub(self, rhs: LazyValue) -> LazyValue {
-        self.deep_resolve()
-            .await
-            .sub(rhs.deep_resolve().await)
-            .await
-            .into()
-    }
-
-    pub async fn mul(self, rhs: LazyValue) -> LazyValue {
-        self.deep_resolve()
-            .await
-            .mul(rhs.deep_resolve().await)
-            .await
-            .into()
-    }
-
-    pub async fn fdiv(self, rhs: LazyValue) -> LazyValue {
-        self.deep_resolve()
-            .await
-            .fdiv(rhs.deep_resolve().await)
-            .await
-            .into()
-    }
-
-    #[async_recursion]
-    pub async fn neg(self) -> LazyValue {
-        self.resolve().await.neg().await.into()
-    }
-
-    #[async_recursion]
-    pub async fn display(&self, s: &mut String) {
-        self.clone().resolve().await.display(s).await;
-    }
-
-    pub async fn resolve(self) -> RVal {
-        match self {
+    pub async fn resolve(self, eval: &Evaluator) -> Result<RVal, ResolveError> {
+        Ok(match self {
             LazyValue::Int(n) => RVal::Int(n),
             LazyValue::Float(f) => RVal::Float(f),
             LazyValue::Array(a) => RVal::Array(a),
             LazyValue::Char(c) => RVal::Char(c),
+            LazyValue::Place(place) => eval.var_get(&place)?.clone().into(),
             LazyValue::LazyDice {
                 num,
                 sides,
@@ -74,15 +37,16 @@ impl LazyValue {
                 highest_idx,
                 explode,
             } => resolve_dice(num, sides, lowest_idx, highest_idx, explode).await.into(),
-        }
+        })
     }
 
-    pub async fn deep_resolve(self) -> RRVal {
-        match self {
+    pub async fn deep_resolve(self, eval: &Evaluator) -> Result<RRVal, ResolveError> {
+        Ok(match self {
             LazyValue::Int(n) => RRVal::Int(n),
             LazyValue::Float(f) => RRVal::Float(f),
-            LazyValue::Array(a) => RRVal::Array(RRVal::deep_resolve_vec(a).await),
+            LazyValue::Array(a) => RRVal::Array(RRVal::deep_resolve_vec(a, eval).await?),
             LazyValue::Char(c) => RRVal::Char(c),
+            LazyValue::Place(place) => eval.var_get(&place)?.clone(),
             LazyValue::LazyDice {
                 num,
                 sides,
@@ -90,29 +54,7 @@ impl LazyValue {
                 highest_idx,
                 explode,
             } => resolve_dice(num, sides, lowest_idx, highest_idx, explode).await,
-        }
-    }
-
-    pub async fn into_i32(self) -> Result<i32, String> {
-        self.resolve().await.into_i32()
-    }
-
-    #[async_recursion]
-    pub async fn op_eq(self, other: LazyValue) -> LazyValue {
-        self.resolve()
-            .await
-            .op_eq(other.resolve().await)
-            .await
-            .into()
-    }
-
-    #[async_recursion]
-    pub async fn op_or(self, other: LazyValue) -> LazyValue {
-        self.resolve()
-            .await
-            .op_or(other.resolve().await)
-            .await
-            .into()
+        })
     }
 }
 
@@ -123,22 +65,4 @@ where
     fn from(value: Vec<T>) -> Self {
         LazyValue::Array(value.into_iter().map(|x| x.into()).collect())
     }
-}
-
-#[tokio::test]
-async fn display_test() {
-    macro_rules! eq {
-        ($x:expr, $y:expr) => {
-            {
-                let mut s = String::new();
-                LazyValue::from($x).display(&mut s).await;
-                assert_eq!(s, $y);
-            }
-        }
-    }
-
-    eq!(vec![2], "[2]");
-    eq!(vec![1,2,3],"[1, 2, 3]");
-    eq!(vec![vec![1,2],vec![3],vec![4,5]],"[[1, 2], [3], [4, 5]]");
-    eq!(Vec::<i32>::new(), "[]");
 }

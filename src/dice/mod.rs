@@ -34,23 +34,9 @@ pub fn vec_into<A, B: From<A>>(v: Vec<A>) -> Vec<B> {
     v.into_iter().map(|x| x.into()).collect()
 }
 
-pub async fn vec_async_map<A, B, F, Fut>(v: Vec<A>, mut f: F) -> Vec<B> 
-    where F: FnMut(A) -> Fut,
-          Fut: Future<Output = B>,
-{
-    let mut res = Vec::new();
-    res.reserve_exact(v.len());
-    for x in v {
-        res.push(f(x).await);
-    }
-    res
-}
-
 #[test]
 fn op_string_fits_in_field() {
     assert!(get_op_string_list().len() <= 1024);
 }
-
-use std::future::Future;
 
 pub use eval::eval;

@@ -1,4 +1,6 @@
 mod lazy_value;
+use std::error::Error;
+
 pub use lazy_value::LazyValue;
 
 mod rval;
@@ -8,6 +10,88 @@ mod rrval;
 pub use rrval::RRVal;
 
 use rug::Integer;
+use smallvec::SmallVec;
+use smol_str::SmolStr;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolveErrorType {
+    IndexOutOfBounds,
+    IndexingIntoInvalidType,
+    /// Undefined variable.
+    UndefVar,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolveError {
+    /// Condition: if `ty == IndexOutOfBounds`,
+    /// `place` must already have its index list truncated for the *last* element of
+    /// `place.indexes` to be the
+    /// one out of range.
+    place: Place,
+    ty: ResolveErrorType,
+}
+
+impl ResolveError {
+    pub fn index_out_of_bounds(mut place: Place, ii: usize) -> Self {
+        place.indexes.truncate(ii + 1);
+        Self {
+            place,
+            ty: ResolveErrorType::IndexOutOfBounds,
+        }
+    }
+
+    pub fn index_into_invalid_type(mut place: Place, ii: usize) -> Self {
+        place.indexes.truncate(ii + 1);
+        Self {
+            place,
+            ty: ResolveErrorType::IndexingIntoInvalidType,
+        }
+    }
+
+    pub fn undef_var(place: Place) -> Self {
+        Self {
+            place,
+            ty: ResolveErrorType::UndefVar,
+        }
+    }
+
+}
+
+impl Error for ResolveError {}
+impl std::fmt::Display for ResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.ty {
+            ResolveErrorType::IndexOutOfBounds => {
+                let actual_idx = self.place.indexes.last().unwrap();
+                write!(f, "Index `{actual_idx}` out of bounds in {}", &self.place)
+            },
+            ResolveErrorType::UndefVar => {
+                write!(f, "Variable name {} undefined", escape_string_for_discord(&self.place.varname))
+            },
+            ResolveErrorType::IndexingIntoInvalidType => {
+                write!(f, "Attempt to index into non-array type at {}", &self.place)
+            },
+        }
+    }
+}
+
+/// A place, aka lvalue, is a reference to a variable (and/or indexes into that variable.)
+#[derive(Debug, Clone, PartialEq)]
+pub struct Place {
+    pub varname: SmolStr,
+    pub indexes: SmallVec<[i32; 4]>,
+}
+
+impl std::fmt::Display for Place {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "``")?;
+        write!(f, "{}", self.varname)?;
+        for i in &self.indexes {
+            write!(f, "[{i}]")?;
+        }
+        write!(f, "``")
+    }
+}
 
 fn cmp_rrvals(lhs: &RRVal, rhs: &RRVal) -> std::cmp::Ordering {
     use std::cmp::Ordering::*;
@@ -157,7 +241,7 @@ pub async fn array_partition_idx(
     a: Vec<RRVal>,
     idx: usize,
     take_lower: bool,
-) -> Result<Vec<RRVal>, String> {
+) -> anyhow::Result<Vec<RRVal>> {
     let mut idxs: Vec<usize> = (0..a.len()).collect();
     let low_idx = idxs
         .select_nth_unstable_by(idx, |i, j| cmp_rrvals(&a[*i], &a[*j]))

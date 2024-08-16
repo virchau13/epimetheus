@@ -6,9 +6,7 @@ use serenity::builder::{CreateEmbed, CreateEmbedFooter, CreateMessage};
 use serenity::client::{Context, EventHandler};
 use serenity::Client;
 
-mod dice;
-mod os;
-mod util;
+use epimetheus::{dice, os};
 
 struct Handler {
     start_time: Instant,
@@ -61,8 +59,7 @@ impl Handler {
                         {
                             Ok(evalres) => match evalres {
                                 Ok(v) => {
-                                    let mut s = String::new();
-                                    v.display(&mut s).await;
+                                    let s = format!("{v}");
                                     reply(&ctx, msg, CreateMessage::new().content(s)).await?;
                                 }
                                 Err(e) => {

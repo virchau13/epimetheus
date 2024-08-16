@@ -1,4 +1,5 @@
 use phf::phf_map;
+use smol_str::SmolStr;
 
 use super::value::escape_string_for_discord;
 
@@ -82,13 +83,14 @@ impl<'s> Iterator for Lexer<'s> {
                 }
                 '"' => {
                     self.advance();
-                    let mut s = String::new();
+                    self.reset();
                     // TODO escapes
-                    while !self.eat('"') {
-                        s.push(self.peek());
+                    while self.peek() != '"' {
                         self.advance();
                     }
-                    self.tok(Token::Str(s))
+                    let res = self.so_far();
+                    self.advance();
+                    self.tok(Token::Str(SmolStr::new(res)))
                 }
                 '!' => {
                     self.advance();
@@ -163,6 +165,7 @@ const OP_MAP: phf::Map<char, Op> = phf_map! {
     '[' => Op::LBrack,
     ']' => Op::RBrack,
     '/' => Op::Slash,
+    '#' => Op::Hash,
 };
 
 macro_rules! declare_ops {
@@ -200,7 +203,8 @@ declare_ops! {
     And,
     LBrack,
     RBrack,
-    Slash
+    Slash,
+    Hash,
 }
 
 impl Op {
@@ -224,6 +228,7 @@ impl Op {
             Op::LBrack => "[",
             Op::RBrack => "]",
             Op::Slash => "/",
+            Op::Hash => "#",
         }
     }
 }
@@ -233,7 +238,7 @@ pub enum Token<'s> {
     Number(u64),
     Op(Op),
     Ident(&'s str),
-    Str(String),
+    Str(SmolStr),
     Char(char),
     Unexpected(char),
     Eof,

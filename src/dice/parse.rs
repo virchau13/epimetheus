@@ -5,21 +5,22 @@ use async_recursion::async_recursion;
 use crate::dice::lex::{Lexer, Op, Token};
 
 #[trait_variant::make(ParseIns: Send)]
+#[allow(dead_code)]
 pub trait UnusedParseIns {
     type Value: std::fmt::Debug + Send;
 
-    async fn literal<'t>(&self, v: Token<'t>) -> Result<Self::Value, String>;
-    async fn binop(&self, left: Self::Value, right: Self::Value, c: Op) -> Result<Self::Value, String>;
-    async fn pfxop(&self, inner: Self::Value, c: Op) -> Result<Self::Value, String>;
-    async fn sfxop(&self, inner: Self::Value, c: Op) -> Result<Self::Value, String>;
+    async fn literal<'t>(&self, v: Token<'t>) -> anyhow::Result<Self::Value>;
+    async fn binop(&mut self, left: Self::Value, right: Self::Value, c: Op) -> anyhow::Result<Self::Value>;
+    async fn pfxop(&self, inner: Self::Value, c: Op) -> anyhow::Result<Self::Value>;
+    async fn sfxop(&self, inner: Self::Value, c: Op) -> anyhow::Result<Self::Value>;
     async fn dice(&mut self, num: Option<Self::Value>, sides: Self::Value)
-        -> Result<Self::Value, String>;
+        -> anyhow::Result<Self::Value>;
     async fn keep_highest(&mut self, dice: Self::Value, keep: Self::Value)
-        -> Result<Self::Value, String>;
+        -> anyhow::Result<Self::Value>;
     async fn keep_lowest(&mut self, dice: Self::Value, keep: Self::Value)
-        -> Result<Self::Value, String>;
-    async fn explode(&mut self, dice: Self::Value, keep: Self::Value) -> Result<Self::Value, String>;
-    async fn mk_array(&mut self, arr: Vec<Self::Value>) -> Result<Self::Value, String>;
+        -> anyhow::Result<Self::Value>;
+    async fn explode(&mut self, dice: Self::Value, keep: Self::Value) -> anyhow::Result<Self::Value>;
+    async fn mk_array(&mut self, arr: Vec<Self::Value>) -> anyhow::Result<Self::Value>;
 }
 
 pub struct Parser<'s, I: ParseIns> {
@@ -29,7 +30,7 @@ pub struct Parser<'s, I: ParseIns> {
 
 // stupid
 macro_rules! pres {
-    () => { Result<I::Value, String> }
+    () => { anyhow::Result<I::Value> }
 }
 
 fn infix_prec(op: Op) -> Option<(u8, u8)> {
@@ -39,9 +40,10 @@ fn infix_prec(op: Op) -> Option<(u8, u8)> {
         Op::Plus => (13, 14),
         Op::Minus => (13, 14),
         Op::Comma => (9, 10),
-        Op::Equal => (5, 6),
-        Op::Or => (3, 4),
-        Op::Semicolon => (0, 1),
+        Op::Equal => (7, 8),
+        Op::Or => (5, 6),
+        Op::Assign => (4, 3),
+        Op::Semicolon => (1, 2),
         _ => return None,
     })
 }
@@ -50,6 +52,7 @@ fn prefix_prec(op: Op) -> Option<u8> {
     Some(match op {
         Op::Plus => 20,
         Op::Minus => 20,
+        Op::Hash => 20,
         Op::Comma => 10,
         _ => return None,
     })
@@ -71,6 +74,10 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
         }
     }
 
+    pub fn into_ins(self) -> I {
+        self.ins
+    }
+
     fn peek(&mut self) -> &Token<'s> {
         self.lex.peek().unwrap_or(&Token::Eof)
     }
@@ -88,9 +95,9 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
         }
     }
 
-    fn expect(&mut self, t: &Token<'_>) -> Result<(), String> {
+    fn expect(&mut self, t: &Token<'_>) -> anyhow::Result<()> {
         if !self.eat(t) {
-            Err(format!("expected {} but got {}", t, self.peek()))
+            anyhow::bail!("expected {} but got {}", t, self.peek())
         } else {
             Ok(())
         }
@@ -135,7 +142,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
                     self.expect(&Token::Op(Op::RPar))?;
                     inner
                 } else {
-                    return Err(format!("invalid prefix operator `{}`", t));
+                    anyhow::bail!("invalid prefix operator `{}`", t);
                 }
             }
             Token::Ident("d") => {
@@ -180,7 +187,6 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
                 }
                 Token::Ident("d") => {
                     let (lp, rp) = (39, 40);
-                    // state, oh state, oh state
                     if min_prec <= lp {
                         self.advance();
                         let rhs = self.expr(rp).await?;
@@ -211,8 +217,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
                 }
                 Token::Eof => return Ok(first),
                 bad => {
-                    // unexpected token
-                    return Err(format!("unexpected token `{}`", bad));
+                    anyhow::bail!("unexpected token `{}`", bad);
                 }
             };
         }
@@ -230,6 +235,8 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
     }
 }
 
-pub async fn run_parser<I: ParseIns + Send>(s: &str, i: I) -> Result<I::Value, String> {
-    Parser::new(Lexer::new(s), i).entry().await
+pub async fn run_parser<I: ParseIns + Send>(s: &str, i: I) -> anyhow::Result<(I, I::Value)> {
+    let mut parser = Parser::new(Lexer::new(s), i);
+    let val = parser.entry().await?;
+    Ok((parser.into_ins(), val))
 }

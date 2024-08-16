@@ -1,48 +1,115 @@
+use std::collections::{btree_map, BTreeMap};
+
+use smallvec::SmallVec;
+use smol_str::SmolStr;
+
 use crate::dice::{
     lex::{Op, Token},
     parse::ParseIns,
     value::{array_partition_idx, LazyValue, RVal},
 };
 
-use super::{value::RRVal, vec_async_map, vec_into};
+use super::{
+    value::{Place, RRVal, ResolveError},
+    vec_into,
+};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Evaluator {}
+#[derive(Debug, Clone, PartialEq)]
+pub struct Evaluator {
+    vars: BTreeMap<SmolStr, RRVal>,
+}
 
 impl Evaluator {
     fn new() -> Self {
-        Self {}
+        Self {
+            vars: Default::default(),
+        }
+    }
+
+    pub fn var_get<'s>(&'s self, place: &Place) -> Result<&'s RRVal, ResolveError> {
+        let mut placeref = self
+            .vars
+            .get(&place.varname)
+            .ok_or_else(|| ResolveError::undef_var(place.clone()))?;
+        for (ii, i) in place.indexes.iter().enumerate() {
+            match placeref {
+                RRVal::Array(a) => {
+                    placeref = a
+                        .get(*i as usize)
+                        .ok_or_else(|| ResolveError::index_out_of_bounds(place.clone(), ii))?;
+                }
+                _ => return Err(ResolveError::index_into_invalid_type(place.clone(), ii)),
+            }
+        }
+        Ok(placeref)
+    }
+
+    pub fn var_set<'s>(
+        &'s mut self,
+        place: &Place,
+        val: RRVal,
+    ) -> Result<&'s mut RRVal, ResolveError> {
+        let place_entry = self.vars.entry(place.varname.clone());
+        match place_entry {
+            btree_map::Entry::Vacant(entry) => Ok(entry.insert(val)),
+            btree_map::Entry::Occupied(entry) => {
+                let mut placeref = entry.into_mut();
+                for (ii, i) in place.indexes.iter().enumerate() {
+                    match placeref {
+                        RRVal::Array(a) => {
+                            placeref = a.get_mut(*i as usize).ok_or_else(|| {
+                                ResolveError::index_out_of_bounds(place.clone(), ii)
+                            })?;
+                        }
+                        _ => return Err(ResolveError::index_into_invalid_type(place.clone(), ii)),
+                    }
+                }
+                *placeref = val;
+                Ok(placeref)
+            }
+        }
     }
 }
 
 impl ParseIns for Evaluator {
     type Value = LazyValue;
 
-    async fn literal<'t>(&self, v: crate::dice::lex::Token<'t>) -> Result<Self::Value, String> {
+    async fn literal<'t>(&self, v: crate::dice::lex::Token<'t>) -> anyhow::Result<Self::Value> {
         match v {
             Token::Number(x) => Ok(LazyValue::Int(x.into())),
             Token::Char(c) => Ok(LazyValue::Char(c)),
-            Token::Str(s) => Ok(LazyValue::Array(
-                s.chars().map(LazyValue::Char).collect(),
-            )),
-            Token::Ident(_i) => todo!("resolve identifiers"),
-            Token::Eof => Err("incomplete expression".to_string()),
-            _ => Err(format!("invalid literal `{}`", v)),
+            Token::Str(s) => Ok(LazyValue::Array(s.chars().map(LazyValue::Char).collect())),
+            Token::Ident(i) => Ok(LazyValue::Place(Place {
+                varname: SmolStr::new(i),
+                indexes: SmallVec::new(),
+            })),
+            Token::Eof => anyhow::bail!("incomplete expression".to_string()),
+            _ => anyhow::bail!("invalid literal `{}`", v),
         }
     }
 
     async fn binop(
-        &self,
+        &mut self,
         left: Self::Value,
         right: Self::Value,
         c: Op,
-    ) -> Result<Self::Value, String> {
+    ) -> anyhow::Result<Self::Value> {
+        macro_rules! deepres {
+            ($l:ident, $op:ident, $r:ident) => {
+                LazyValue::from(
+                    $l.deep_resolve(self)
+                        .await?
+                        .$op($r.deep_resolve(self).await?)
+                        .await,
+                )
+            };
+        }
         match c {
-            Op::Plus => Ok(left.add(right).await),
-            Op::Minus => Ok(left.sub(right).await),
-            Op::Star => Ok(left.mul(right).await),
-            Op::Slash => Ok(left.fdiv(right).await),
-            Op::Comma => match (left.resolve().await, right.resolve().await) {
+            Op::Plus => Ok(deepres!(left, add, right)),
+            Op::Minus => Ok(deepres!(left, sub, right)),
+            Op::Star => Ok(deepres!(left, mul, right)),
+            Op::Slash => Ok(deepres!(left, fdiv, right)),
+            Op::Comma => match (left.resolve(self).await?, right.resolve(self).await?) {
                 (RVal::Array(mut a), RVal::Array(mut b)) => {
                     a.append(&mut b);
                     Ok(LazyValue::Array(a))
@@ -62,65 +129,89 @@ impl ParseIns for Evaluator {
             {
                 Ok(right)
             }
-            Op::Equal => Ok(left.op_eq(right).await),
-            Op::Or => Ok(left.op_or(right).await),
+            Op::Equal => Ok(deepres!(left, op_eq, right)),
+            Op::Or => Ok(deepres!(left, op_or, right)),
             Op::And => {
                 todo!()
             }
-            _ => Err(format!("invalid infix operator `{}`", c.as_str())),
+            Op::Assign => {
+                if let LazyValue::Place(place) = left {
+                    let new_value = right.deep_resolve(self).await?;
+                    self.var_set(&place, new_value)?;
+                    Ok(LazyValue::Place(place)) // hehe
+                } else {
+                    anyhow::bail!("attempt to assign to an rvalue instead of a lvalue");
+                }
+            }
+            _ => anyhow::bail!("invalid infix operator `{}`", c.as_str()),
         }
     }
 
-    async fn pfxop(&self, inner: Self::Value, c: Op) -> Result<Self::Value, String> {
+    async fn pfxop(&self, inner: Self::Value, c: Op) -> anyhow::Result<Self::Value> {
         match c {
             Op::Plus => Ok(inner),
-            Op::Minus => Ok(inner.neg().await),
+            Op::Minus => Ok(inner.deep_resolve(self).await?.neg().await.into()),
             Op::Comma => {
                 /* Enlist! */
                 Ok(LazyValue::Array(vec![inner]))
             }
-            _ => Err(format!("invalid prefix operator `{}`", c.as_str())),
+            Op::Hash => {
+                // Array length.
+                match inner {
+                    LazyValue::Array(a) => Ok(LazyValue::Int(a.len().into())),
+                    _ => anyhow::bail!("cannot apply length operator (`#`) to non-array"),
+                }
+            }
+            _ => anyhow::bail!("invalid prefix operator `{}`", c.as_str()),
         }
     }
 
-    async fn sfxop(&self, inner: Self::Value, c: Op) -> Result<Self::Value, String> {
+    async fn sfxop(&self, inner: Self::Value, c: Op) -> anyhow::Result<Self::Value> {
         match c {
-            Op::Percent => Ok(inner.fdiv(100.into()).await),
+            Op::Percent => Ok(inner
+                .deep_resolve(self)
+                .await?
+                .fdiv(100.into())
+                .await
+                .into()),
             Op::Bang => {
                 /* explode! */
-                match inner {
-                    LazyValue::LazyDice {
+                if let LazyValue::LazyDice {
+                    num,
+                    sides,
+                    lowest_idx,
+                    highest_idx,
+                    mut explode,
+                } = inner
+                {
+                    let l = sides.len();
+                    return Ok(LazyValue::LazyDice {
                         num,
                         sides,
                         lowest_idx,
                         highest_idx,
-                        mut explode,
-                    } => {
-                        let l = sides.len();
-                        Ok(LazyValue::LazyDice {
-                            num,
-                            sides,
-                            lowest_idx,
-                            highest_idx,
-                            explode: {
-                                explode.push(RRVal::Int(l.into()));
-                                explode
-                            },
-                        })
+                        explode: {
+                            explode.push(RRVal::Int(l.into()));
+                            explode
+                        },
+                    });
+                }
+                match inner.resolve(self).await? {
+                    RVal::Int(_) => {
+                        anyhow::bail!("factorial isn't implemented yet, sorry :P".to_string())
                     }
-                    LazyValue::Int(_) => {
-                        Err("factorial isn't implemented yet, sorry :P".to_string())
+                    RVal::Float(_) => {
+                        anyhow::bail!(
+                            "floating point factorial isn't implemented yet, sorry :P".to_string()
+                        )
                     }
-                    LazyValue::Float(_) => {
-                        Err("floating point factorial isn't implemented yet, sorry :P".to_string())
-                    }
-                    LazyValue::Char(_) => Err("you can't explode a character".to_string()),
-                    LazyValue::Array(_) => {
-                        Err("the operator `!` is not defined on arrays yet".to_string())
+                    RVal::Char(_) => anyhow::bail!("you can't explode a character".to_string()),
+                    RVal::Array(_) => {
+                        anyhow::bail!("the operator `!` is not defined on arrays yet".to_string())
                     }
                 }
             }
-            _ => Err(format!("invalid suffix operator `{}`", c.as_str())),
+            _ => anyhow::bail!("invalid suffix operator `{}`", c.as_str()),
         }
     }
 
@@ -128,13 +219,14 @@ impl ParseIns for Evaluator {
         &mut self,
         num: Option<Self::Value>,
         sides_raw: Self::Value,
-    ) -> Result<Self::Value, String> {
+    ) -> anyhow::Result<Self::Value> {
         const DICE_LIMIT_SIDES: u32 = 65535;
         // TODO: large dice optimization
         let num: u32 = match num {
             Some(nv) => nv
+                .resolve(self)
+                .await?
                 .into_i32()
-                .await
                 .and_then(|v| u32::try_from(v).map_err(|_| "negative number of dice".to_string()))
                 .and_then(|v| {
                     if v > DICE_LIMIT_SIDES {
@@ -145,16 +237,17 @@ impl ParseIns for Evaluator {
                 }),
             None => Ok(1),
         }
-        .map_err(|e| format!("invalid number of dice: {:?}", e))?;
+        .map_err(|e| anyhow::anyhow!("invalid number of dice: {:?}", e))?;
         let sides;
         if let LazyValue::Array(a) = sides_raw {
-            sides = RRVal::deep_resolve_vec(a).await;
+            sides = RRVal::deep_resolve_vec(a, self).await?;
         } else {
             let sides_num: u32 = sides_raw
+                .resolve(self)
+                .await?
                 .into_i32()
-                .await
                 .and_then(|v| u32::try_from(v).map_err(|_| "negative number of sides".to_string()))
-                .map_err(|e| format!("invalid number of sides: {:?}", e))?;
+                .map_err(|e| anyhow::anyhow!("invalid number of sides: {:?}", e))?;
             sides = (1..=sides_num).map(|y| RRVal::Int(y.into())).collect();
         }
         Ok(LazyValue::LazyDice {
@@ -170,12 +263,13 @@ impl ParseIns for Evaluator {
         &mut self,
         dice: Self::Value,
         keep: Self::Value,
-    ) -> Result<Self::Value, String> {
+    ) -> anyhow::Result<Self::Value> {
         let kh: u32 = keep
+            .resolve(self)
+            .await?
             .into_i32()
-            .await
             .and_then(|v| v.try_into().map_err(|_| format!("is negative {v}")))
-            .map_err(|e| format!("invalid keep-highest criterion: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("invalid keep-highest criterion: {e}"))?;
         match dice {
             LazyValue::LazyDice {
                 num,
@@ -190,20 +284,23 @@ impl ParseIns for Evaluator {
                 highest_idx,
                 explode,
             }),
-            LazyValue::Int(_) => Err("keep-highest operation is invalid on integers".to_string()),
-            LazyValue::Float(_) => Err("keep-highest operation is invalid on numbers".to_string()),
+            LazyValue::Int(_) => {
+                anyhow::bail!("keep-highest operation is invalid on integers".to_string())
+            }
+            LazyValue::Place(_) => {
+                anyhow::bail!("keep-highest operation is invalid on variable references".to_string())
+            }
+            LazyValue::Float(_) => {
+                anyhow::bail!("keep-highest operation is invalid on numbers".to_string())
+            }
             LazyValue::Char(_) => {
-                Err("keep-highest operation is invalid on characters".to_string())
+                anyhow::bail!("keep-highest operation is invalid on characters".to_string())
             }
             LazyValue::Array(a) => {
                 let idx = a.len() - kh as usize;
                 Ok(LazyValue::Array(vec_into(
-                    array_partition_idx(
-                        vec_async_map(a, LazyValue::deep_resolve).await,
-                        idx,
-                        false,
-                    )
-                    .await?,
+                    array_partition_idx(RRVal::deep_resolve_vec(a, self).await?, idx, false)
+                        .await?,
                 )))
             }
         }
@@ -213,12 +310,13 @@ impl ParseIns for Evaluator {
         &mut self,
         dice: Self::Value,
         keep: Self::Value,
-    ) -> Result<Self::Value, String> {
+    ) -> anyhow::Result<Self::Value> {
         let kl: u32 = keep
+            .resolve(self)
+            .await?
             .into_i32()
-            .await
             .and_then(|v| v.try_into().map_err(|_| format!("is negative {v}")))
-            .map_err(|e| format!("invalid keep-lowest criterion: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("invalid keep-lowest criterion: {e}"))?;
         match dice {
             LazyValue::LazyDice {
                 num,
@@ -233,14 +331,22 @@ impl ParseIns for Evaluator {
                 highest_idx: highest_idx.min((lowest_idx + kl).saturating_sub(1)),
                 explode,
             }),
-            LazyValue::Int(_) => Err("keep-lowest operation is invalid on integers".to_string()),
-            LazyValue::Float(_) => Err("keep-lowest operation is invalid on numbers".to_string()),
-            LazyValue::Char(_) => Err("keep-lowest operation is invalid on characters".to_string()),
+            LazyValue::Int(_) => {
+                anyhow::bail!("keep-lowest operation is invalid on integers".to_string())
+            }
+            LazyValue::Float(_) => {
+                anyhow::bail!("keep-lowest operation is invalid on numbers".to_string())
+            }
+            LazyValue::Char(_) => {
+                anyhow::bail!("keep-lowest operation is invalid on characters".to_string())
+            }
+            LazyValue::Place(_) => {
+                anyhow::bail!("keep-lowest operation is invalid on variable references".to_string())
+            }
             LazyValue::Array(a) => {
                 let idx = kl as usize;
                 Ok(LazyValue::Array(vec_into(
-                    array_partition_idx(vec_async_map(a, LazyValue::deep_resolve).await, idx, true)
-                        .await?,
+                    array_partition_idx(RRVal::deep_resolve_vec(a, self).await?, idx, true).await?,
                 )))
             }
         }
@@ -250,12 +356,13 @@ impl ParseIns for Evaluator {
         &mut self,
         dice: Self::Value,
         inner: Self::Value,
-    ) -> Result<Self::Value, String> {
+    ) -> anyhow::Result<Self::Value> {
         match dice {
-            LazyValue::Int(_) => Err("cannot explode integers".to_string()),
-            LazyValue::Float(_) => Err("cannot explode numbers".to_string()),
-            LazyValue::Array(_) => Err("cannot explode arrays".to_string()),
-            LazyValue::Char(_) => Err("cannot explode characters".to_string()),
+            LazyValue::Int(_) => anyhow::bail!("cannot explode integers".to_string()),
+            LazyValue::Float(_) => anyhow::bail!("cannot explode numbers".to_string()),
+            LazyValue::Array(_) => anyhow::bail!("cannot explode arrays".to_string()),
+            LazyValue::Char(_) => anyhow::bail!("cannot explode characters".to_string()),
+            LazyValue::Place(_) => anyhow::bail!("cannot explode variable references".to_string()),
             LazyValue::LazyDice {
                 num,
                 sides,
@@ -268,7 +375,7 @@ impl ParseIns for Evaluator {
                 lowest_idx,
                 highest_idx,
                 explode: {
-                    let mut res = match inner.deep_resolve().await {
+                    let mut res = match inner.deep_resolve(self).await? {
                         RRVal::Array(a) => a,
                         r => vec![r],
                     };
@@ -279,16 +386,15 @@ impl ParseIns for Evaluator {
         }
     }
 
-    async fn mk_array(&mut self, arr: Vec<Self::Value>) -> Result<Self::Value, String> {
+    async fn mk_array(&mut self, arr: Vec<Self::Value>) -> anyhow::Result<Self::Value> {
         Ok(LazyValue::Array(arr))
     }
 }
 
-pub async fn eval(s: &str) -> Result<RVal, String> {
-    Ok(crate::dice::parse::run_parser(s, Evaluator::new())
-        .await?
-        .resolve()
-        .await)
+pub async fn eval(s: &str) -> anyhow::Result<RRVal> {
+    let (evaluator, val) = crate::dice::parse::run_parser(s, Evaluator::new()).await?;
+    let rrval = val.deep_resolve(&evaluator).await?;
+    Ok(rrval)
 }
 
 #[tokio::test]
@@ -296,7 +402,7 @@ async fn eval_positive_test() {
     macro_rules! good {
         ($x:expr, $y:literal / $z:literal) => {
             let m;
-            if let RVal::Float(m1) = eval($x).await.unwrap() {
+            if let RRVal::Float(m1) = eval($x).await.unwrap() {
                 m = m1;
             } else {
                 panic!();
@@ -385,6 +491,7 @@ async fn eval_positive_test() {
     good!("[1,]", #vec![1]);
     good!("[1, 2,]", #vec![1,2]);
 
+    good!(r#""unstring""#, #"unstring");
     good!(r#"d["left", "right", "up", "down"]"#, #"up");
     // This is *intentional*. (For now.)
     good!("d[]", 0);
@@ -392,6 +499,13 @@ async fn eval_positive_test() {
 
     good!("(3/4)*100", 75);
     good!("(1/2)*100", 50);
+
+    good!("v=4; v", 4);
+    good!("x=10000; x=1; x d x", 1);
+    good!("y=3; x=y=4; [x,y]", #vec![4,4]);
+    good!("#,4", 1);
+    good!("#[1,2,3]", 3);
+    good!(r#"#"string""#, 6);
 }
 
 #[tokio::test]
@@ -409,4 +523,7 @@ async fn eval_negative_test() {
     bad!("2 2");
     bad!("$2");
     bad!("2$");
+    bad!("#2");
+    bad!("2 = 2");
+    bad!("x");
 }
