@@ -1,33 +1,51 @@
 {
-  description = "A Discord bot";
+  description = "Discord bot";
 
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-unstable";
-    utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+
+    crane = {
+      url = "github:ipetkov/crane";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, utils }: utils.lib.eachDefaultSystem(system: let
-    pkgs = import nixpkgs { inherit system; };
-  in {
-    packages = rec {
-      epimetheus = with pkgs; rustPlatform.buildRustPackage  {
-        pname = "epimetheus";
-        version = "0.1.0";
+  outputs = { self, nixpkgs, crane, flake-utils, ... }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
 
-        src = ./.;
+        craneLib = crane.mkLib pkgs;
 
-        buildInputs = [ m4 ];
-        nativeBuildInputs = [ m4 ];
+        epimetheus = craneLib.buildPackage {
+          pname = "epimetheus";
+          version = "0.1.0";
 
-        cargoLock = {
-          lockFile = ./Cargo.lock;
+          src = craneLib.cleanCargoSource ./.;
+          strictDeps = true;
+
+          buildInputs = with pkgs; [
+            pkg-config
+            m4
+            aflplusplus
+          ];
         };
-      };
-      default = epimetheus;
-    };
-    devShell = with pkgs; stdenv.mkDerivation {
-      name = "epimetheus";
-      buildInputs = [ m4 ];
-    };
-  });
+      in
+      {
+        checks = { inherit epimetheus; };
+
+        packages.default = epimetheus;
+
+        apps.default = flake-utils.lib.mkApp {
+          drv = epimetheus;
+        };
+
+        devShells.default = craneLib.devShell {
+          checks = self.checks.${system};
+          packages = epimetheus.buildInputs;
+          LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath epimetheus.buildInputs}";
+        };
+      });
 }
