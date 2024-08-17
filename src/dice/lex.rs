@@ -92,7 +92,10 @@ impl<'s> Iterator for Lexer<'s> {
                     self.advance();
                     self.reset();
                     // TODO escapes
-                    while self.peek() != '"' && self.peek() != '\0' {
+                    while self.peek() != '"' {
+                        if self.peek() == '\0' {
+                            return self.tok(Token::UnexpectedEof);
+                        }
                         self.advance();
                     }
                     let res = self.so_far();
@@ -249,6 +252,7 @@ pub enum Token<'s> {
     Char(char),
     UnexpectedStr(&'s str),
     UnexpectedChar(char),
+    UnexpectedEof,
     Eof,
 }
 
@@ -262,6 +266,7 @@ impl<'s> std::fmt::Display for Token<'s> {
             Token::Char(c) => write!(f, "'{}'", c.escape_default()),
             Token::UnexpectedStr(s) => write!(f, "{}", s.escape_default()),
             Token::UnexpectedChar(c) => write!(f, "{}", c.escape_default()),
+            Token::UnexpectedEof => write!(f, "unexpected end-of-input"),
             Token::Eof => write!(f, "end-of-input"),
         }
     }
