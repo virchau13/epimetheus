@@ -247,7 +247,14 @@ impl ParseIns for Evaluator {
                 .await?
                 .into_i32()
                 .and_then(|v| u32::try_from(v).map_err(|_| "negative number of sides".to_string()))
-                .map_err(|e| anyhow::anyhow!("invalid number of sides: {:?}", e))?;
+                .map_err(|e| anyhow::anyhow!("invalid number of sides: {:?}", e))
+                .and_then(|v| {
+                    if v > DICE_LIMIT_SIDES {
+                        Err(anyhow::anyhow!("too many sides: {v} > {DICE_LIMIT_SIDES}"))
+                    } else {
+                        Ok(v)
+                    }
+                })?;
             sides = (1..=sides_num).map(|y| RRVal::Int(y.into())).collect();
         }
         Ok(LazyValue::LazyDice {

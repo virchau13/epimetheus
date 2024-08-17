@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use epimetheus::dice;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     eprint!("> ");
     io::stderr().flush().unwrap();
