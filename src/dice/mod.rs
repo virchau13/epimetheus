@@ -3,13 +3,13 @@ mod lex;
 mod parse;
 mod value;
 
-#[cfg(not(test))]
+#[cfg(not(any(test, fuzzing)))]
 fn get_rng() -> impl rand::Rng + Send {
     use rand::{rngs::StdRng, SeedableRng};
     StdRng::from_entropy()
 }
 
-#[cfg(test)]
+#[cfg(any(test, fuzzing))]
 pub fn get_rng() -> impl rand::Rng + Send {
     // colon three
     use rand::{rngs::StdRng, SeedableRng};

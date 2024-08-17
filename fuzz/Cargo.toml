@@ -1,0 +1,9 @@
+[package]
+name = "fuzz"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+afl = "0.15.10"
+epimetheus = { version = "0.1.0", path = ".." }
+smol = "2.0.1"
