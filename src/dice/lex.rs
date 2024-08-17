@@ -63,7 +63,11 @@ impl<'s> Iterator for Lexer<'s> {
                     while self.peek().is_ascii_digit() {
                         self.advance();
                     }
-                    self.tok(Token::Number(self.so_far().parse::<u64>().unwrap()))
+                    let text = self.so_far();
+                    self.tok(match text.parse::<u64>() {
+                        Ok(n) => Token::Number(n),
+                        Err(_) => Token::UnexpectedStr(text),
+                    })
                 }
                 'a'..='z' | 'A'..='Z' | '_' => {
                     while matches!(self.peek(), 'a'..='z' | 'A'..='Z' | '_') {
@@ -81,7 +85,7 @@ impl<'s> Iterator for Lexer<'s> {
                     if closing == '\'' {
                         self.tok(Token::Char(c))
                     } else {
-                        self.tok(Token::Unexpected(closing))
+                        self.tok(Token::UnexpectedChar(closing))
                     }
                 }
                 '"' => {
@@ -144,7 +148,7 @@ impl<'s> Iterator for Lexer<'s> {
                         self.advance();
                         self.tok(Token::Op(*v))
                     } else if c != '\0' {
-                            self.tok(Token::Unexpected(c))
+                            self.tok(Token::UnexpectedChar(c))
                     } else {
                         None
                     }
@@ -243,7 +247,8 @@ pub enum Token<'s> {
     Ident(&'s str),
     Str(SmolStr),
     Char(char),
-    Unexpected(char),
+    UnexpectedStr(&'s str),
+    UnexpectedChar(char),
     Eof,
 }
 
@@ -255,7 +260,8 @@ impl<'s> std::fmt::Display for Token<'s> {
             Token::Ident(id) => write!(f, "{}", id),
             Token::Str(s) => write!(f, "{}", escape_string_for_discord(s)),
             Token::Char(c) => write!(f, "'{}'", c.escape_default()),
-            Token::Unexpected(c) => write!(f, "{}", c.escape_default()),
+            Token::UnexpectedStr(s) => write!(f, "{}", s.escape_default()),
+            Token::UnexpectedChar(c) => write!(f, "{}", c.escape_default()),
             Token::Eof => write!(f, "end-of-input")
         }
     }
