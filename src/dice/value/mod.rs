@@ -123,9 +123,15 @@ fn cmp_rrvals(lhs: &RRVal, rhs: &RRVal) -> std::cmp::Ordering {
         (RRVal::Array(a), RRVal::Array(b)) => {
             // lexographic comparison
             if a.len() != b.len() {
-                return a.len().cmp(&b.len());
+                a.len().cmp(&b.len())
+            } else {
+                a.iter().zip(b).find_map(|(a,b)| {
+                    match cmp_rrvals(a, b) {
+                        Equal => None,
+                        result => Some(result),
+                    }
+                }).unwrap_or(Equal)
             }
-            todo!()
         }
         (v, RRVal::Array(a)) => {
             // compare by first element
