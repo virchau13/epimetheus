@@ -76,10 +76,13 @@ impl<'s> Iterator for Lexer<'s> {
                     let c = self.peek();
                     self.advance();
                     // TODO support escapes
-                    if !self.eat('\'') {
-                        todo!()
+                    let closing = self.peek();
+                    self.advance();
+                    if closing == '\'' {
+                        self.tok(Token::Char(c))
+                    } else {
+                        self.tok(Token::Unexpected(closing))
                     }
-                    self.tok(Token::Char(c))
                 }
                 '"' => {
                     self.advance();
