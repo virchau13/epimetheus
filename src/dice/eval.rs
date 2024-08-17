@@ -229,7 +229,9 @@ impl ParseIns for Evaluator {
                 .into_i32()
                 .and_then(|v| u32::try_from(v).map_err(|_| "negative number of dice".to_string()))
                 .and_then(|v| {
-                    if v > DICE_LIMIT_SIDES {
+                    if v == 0 {
+                        Err("too few dice, must be at least 1".to_string())
+                    } else if v > DICE_LIMIT_SIDES {
                         Err(format!("too many dice: {v} > {DICE_LIMIT_SIDES}"))
                     } else {
                         Ok(v)
