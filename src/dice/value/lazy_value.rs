@@ -36,7 +36,9 @@ impl LazyValue {
                 lowest_idx,
                 highest_idx,
                 explode,
-            } => resolve_dice(num, sides, lowest_idx, highest_idx, explode).await.into(),
+            } => resolve_dice(num, sides, lowest_idx, highest_idx, explode)
+                .await
+                .into(),
         })
     }
 

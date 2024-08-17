@@ -54,7 +54,6 @@ impl ResolveError {
             ty: ResolveErrorType::UndefVar,
         }
     }
-
 }
 
 impl Error for ResolveError {}
@@ -64,13 +63,17 @@ impl std::fmt::Display for ResolveError {
             ResolveErrorType::IndexOutOfBounds => {
                 let actual_idx = self.place.indexes.last().unwrap();
                 write!(f, "Index `{actual_idx}` out of bounds in {}", &self.place)
-            },
+            }
             ResolveErrorType::UndefVar => {
-                write!(f, "Variable name {} undefined", escape_string_for_discord(&self.place.varname))
-            },
+                write!(
+                    f,
+                    "Variable name {} undefined",
+                    escape_string_for_discord(&self.place.varname)
+                )
+            }
             ResolveErrorType::IndexingIntoInvalidType => {
                 write!(f, "Attempt to index into non-array type at {}", &self.place)
-            },
+            }
         }
     }
 }
@@ -125,12 +128,13 @@ fn cmp_rrvals(lhs: &RRVal, rhs: &RRVal) -> std::cmp::Ordering {
             if a.len() != b.len() {
                 a.len().cmp(&b.len())
             } else {
-                a.iter().zip(b).find_map(|(a,b)| {
-                    match cmp_rrvals(a, b) {
+                a.iter()
+                    .zip(b)
+                    .find_map(|(a, b)| match cmp_rrvals(a, b) {
                         Equal => None,
                         result => Some(result),
-                    }
-                }).unwrap_or(Equal)
+                    })
+                    .unwrap_or(Equal)
             }
         }
         (v, RRVal::Array(a)) => {

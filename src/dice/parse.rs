@@ -10,16 +10,34 @@ pub trait UnusedParseIns {
     type Value: std::fmt::Debug + Send;
 
     async fn literal<'t>(&self, v: Token<'t>) -> anyhow::Result<Self::Value>;
-    async fn binop(&mut self, left: Self::Value, right: Self::Value, c: Op) -> anyhow::Result<Self::Value>;
+    async fn binop(
+        &mut self,
+        left: Self::Value,
+        right: Self::Value,
+        c: Op,
+    ) -> anyhow::Result<Self::Value>;
     async fn pfxop(&self, inner: Self::Value, c: Op) -> anyhow::Result<Self::Value>;
     async fn sfxop(&self, inner: Self::Value, c: Op) -> anyhow::Result<Self::Value>;
-    async fn dice(&mut self, num: Option<Self::Value>, sides: Self::Value)
-        -> anyhow::Result<Self::Value>;
-    async fn keep_highest(&mut self, dice: Self::Value, keep: Self::Value)
-        -> anyhow::Result<Self::Value>;
-    async fn keep_lowest(&mut self, dice: Self::Value, keep: Self::Value)
-        -> anyhow::Result<Self::Value>;
-    async fn explode(&mut self, dice: Self::Value, keep: Self::Value) -> anyhow::Result<Self::Value>;
+    async fn dice(
+        &mut self,
+        num: Option<Self::Value>,
+        sides: Self::Value,
+    ) -> anyhow::Result<Self::Value>;
+    async fn keep_highest(
+        &mut self,
+        dice: Self::Value,
+        keep: Self::Value,
+    ) -> anyhow::Result<Self::Value>;
+    async fn keep_lowest(
+        &mut self,
+        dice: Self::Value,
+        keep: Self::Value,
+    ) -> anyhow::Result<Self::Value>;
+    async fn explode(
+        &mut self,
+        dice: Self::Value,
+        keep: Self::Value,
+    ) -> anyhow::Result<Self::Value>;
     async fn mk_array(&mut self, arr: Vec<Self::Value>) -> anyhow::Result<Self::Value>;
 }
 
@@ -130,7 +148,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
                     }
                     self.ins.mk_array(arr).await?
                 }
-            },
+            }
             Token::Op(op) => {
                 // TODO treat BangLPar and RParBang as logical not of (expr)
                 self.advance();

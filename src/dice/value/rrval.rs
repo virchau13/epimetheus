@@ -101,9 +101,12 @@ impl RRVal {
                 RRVal::Float(f + n.az::<f64>())
             }
             (RRVal::Float(a), RRVal::Float(b)) => RRVal::Float(a + b),
-            (RRVal::Char(c), RRVal::Char(d)) => {
-                RRVal::Char((c as u32).checked_add(d as u32).and_then(char::from_u32).unwrap_or(' '))
-            }
+            (RRVal::Char(c), RRVal::Char(d)) => RRVal::Char(
+                (c as u32)
+                    .checked_add(d as u32)
+                    .and_then(char::from_u32)
+                    .unwrap_or(' '),
+            ),
             (RRVal::Char(c), RRVal::Int(n)) | (RRVal::Int(n), RRVal::Char(c)) => {
                 RRVal::Int(n + c as u32)
             }
@@ -125,9 +128,12 @@ impl RRVal {
             (RRVal::Int(n), RRVal::Float(f)) => RRVal::Float(n.az::<f64>() - f),
             (RRVal::Float(f), RRVal::Int(n)) => RRVal::Float(f - n.az::<f64>()),
             (RRVal::Float(a), RRVal::Float(b)) => RRVal::Float(a - b),
-            (RRVal::Char(c), RRVal::Char(d)) => {
-                RRVal::Char((c as u32).checked_sub(d as u32).and_then(char::from_u32).unwrap_or(' '))
-            }
+            (RRVal::Char(c), RRVal::Char(d)) => RRVal::Char(
+                (c as u32)
+                    .checked_sub(d as u32)
+                    .and_then(char::from_u32)
+                    .unwrap_or(' '),
+            ),
             (RRVal::Char(c), RRVal::Int(n)) => RRVal::Int((c as u32) - n),
             (RRVal::Int(n), RRVal::Char(c)) => RRVal::Int(n - (c as u32)),
             (RRVal::Float(f), RRVal::Char(c)) => RRVal::Float(f - (c as u32 as f64)),
@@ -299,7 +305,7 @@ impl std::fmt::Display for RRVal {
                     write!(f, "]")
                 }
             }
-            RRVal::Char(c) => write!(f, "'{c}'")
+            RRVal::Char(c) => write!(f, "'{c}'"),
         }
     }
 }

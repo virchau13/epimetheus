@@ -20,7 +20,9 @@ const PREFIX: &str = "t%";
 
 async fn reply(ctx: &Context, msg: Message, builder: CreateMessage) -> serenity::Result<()> {
     let msgref = MessageReference::from((msg.channel_id, msg.id));
-    msg.channel_id.send_message(&ctx, builder.reference_message(msgref)).await?;
+    msg.channel_id
+        .send_message(&ctx, builder.reference_message(msgref))
+        .await?;
     Ok(())
 }
 
@@ -63,7 +65,13 @@ impl Handler {
                                     reply(&ctx, msg, CreateMessage::new().content(s)).await?;
                                 }
                                 Err(e) => {
-                                    reply(&ctx, msg, CreateMessage::new().content(format!("Evaluation error: {e}"))).await?;
+                                    reply(
+                                        &ctx,
+                                        msg,
+                                        CreateMessage::new()
+                                            .content(format!("Evaluation error: {e}")),
+                                    )
+                                    .await?;
                                 }
                             },
                             Err(_) => {
@@ -71,7 +79,7 @@ impl Handler {
                             }
                         }
                     }
-                },
+                }
                 "ping" => {
                     reply(&ctx, msg, CreateMessage::new().content("pong.")).await?;
                 }
@@ -90,7 +98,7 @@ impl Handler {
                     }
                     let builder = CreateMessage::new().embed(embed);
                     reply(&ctx, msg, builder).await?;
-                },
+                }
                 "help" => {
                     match words.next() {
                         Some("roll") => {
@@ -114,7 +122,7 @@ impl Handler {
                             let builder = CreateMessage::new().embed(embed);
                             // TODO pages
                             reply(&ctx, msg, builder).await?;
-                        },
+                        }
                         Some("ping") => {
                             let embed = CreateEmbed::new()
                                 .title("`%ping`")
@@ -128,7 +136,7 @@ impl Handler {
                                 ));
                             let builder = CreateMessage::new().embed(embed);
                             reply(&ctx, msg, builder).await?;
-                        },
+                        }
                         Some("checkhealth") => {
                             let embed = CreateEmbed::new()
                                 .title("`%checkhealth`")
@@ -140,10 +148,15 @@ impl Handler {
                                 ));
                             let builder = CreateMessage::new().embed(embed);
                             reply(&ctx, msg, builder).await?;
-                        },
+                        }
                         Some("help") => {
                             if let Some("help") = words.next() {
-                                reply(&ctx, msg, CreateMessage::new().content("Now you're just being silly.")).await?;
+                                reply(
+                                    &ctx,
+                                    msg,
+                                    CreateMessage::new().content("Now you're just being silly."),
+                                )
+                                .await?;
                             } else {
                                 let embed = CreateEmbed::new()
                                     .title("`%help`*`[command]`*")
@@ -152,8 +165,16 @@ impl Handler {
                                         "The all-purpose help command.\n",
                                         "Specific variations:"
                                     ))
-                                    .field("`%help`", "Print the overall help page, containing all commands.", false)
-                                    .field("`%help`*`command`*", "Print the help page for a specific command.", false);
+                                    .field(
+                                        "`%help`",
+                                        "Print the overall help page, containing all commands.",
+                                        false,
+                                    )
+                                    .field(
+                                        "`%help`*`command`*",
+                                        "Print the help page for a specific command.",
+                                        false,
+                                    );
                                 let builder = CreateMessage::new().embed(embed);
                                 reply(&ctx, msg, builder).await?;
                             }
@@ -185,7 +206,9 @@ impl EventHandler for Handler {
         let channel = msg.channel_id;
         if msg.content.starts_with(PREFIX) {
             if let Err(e) = self.proc_msg(ctx.clone(), msg).await {
-                let _ = channel.say(&ctx, format!("error processing command: {e:?}")).await;
+                let _ = channel
+                    .say(&ctx, format!("error processing command: {e:?}"))
+                    .await;
             }
         }
     }
