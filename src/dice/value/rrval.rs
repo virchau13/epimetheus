@@ -102,7 +102,7 @@ impl RRVal {
             }
             (RRVal::Float(a), RRVal::Float(b)) => RRVal::Float(a + b),
             (RRVal::Char(c), RRVal::Char(d)) => {
-                RRVal::Char(char::from_u32(c as u32 + d as u32).unwrap_or(' '))
+                RRVal::Char((c as u32).checked_add(d as u32).and_then(char::from_u32).unwrap_or(' '))
             }
             (RRVal::Char(c), RRVal::Int(n)) | (RRVal::Int(n), RRVal::Char(c)) => {
                 RRVal::Int(n + c as u32)
@@ -126,7 +126,7 @@ impl RRVal {
             (RRVal::Float(f), RRVal::Int(n)) => RRVal::Float(f - n.az::<f64>()),
             (RRVal::Float(a), RRVal::Float(b)) => RRVal::Float(a - b),
             (RRVal::Char(c), RRVal::Char(d)) => {
-                RRVal::Char(char::from_u32(c as u32 - d as u32).unwrap_or(' '))
+                RRVal::Char((c as u32).checked_sub(d as u32).and_then(char::from_u32).unwrap_or(' '))
             }
             (RRVal::Char(c), RRVal::Int(n)) => RRVal::Int((c as u32) - n),
             (RRVal::Int(n), RRVal::Char(c)) => RRVal::Int(n - (c as u32)),
