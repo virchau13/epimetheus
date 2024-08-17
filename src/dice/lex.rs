@@ -57,8 +57,8 @@ impl<'s> Iterator for Lexer<'s> {
             return match c {
                 ' ' | '\t' | '\r' | '\n' => {
                     self.advance();
-                    continue
-                },
+                    continue;
+                }
                 '0'..='9' => {
                     while self.peek().is_ascii_digit() {
                         self.advance();
@@ -74,7 +74,7 @@ impl<'s> Iterator for Lexer<'s> {
                         self.advance();
                     }
                     self.tok(Token::Ident(self.so_far()))
-                },
+                }
                 '\'' => {
                     self.advance();
                     let c = self.peek();
@@ -108,7 +108,7 @@ impl<'s> Iterator for Lexer<'s> {
                     } else {
                         self.tok(Token::Op(Op::Bang))
                     }
-                },
+                }
                 ')' => {
                     self.advance();
                     if self.peek() == '!' {
@@ -126,7 +126,7 @@ impl<'s> Iterator for Lexer<'s> {
                     } else {
                         self.tok(Token::Op(Op::Assign))
                     }
-                },
+                }
                 '|' => {
                     self.advance();
                     if self.eat('|') {
@@ -148,7 +148,7 @@ impl<'s> Iterator for Lexer<'s> {
                         self.advance();
                         self.tok(Token::Op(*v))
                     } else if c != '\0' {
-                            self.tok(Token::UnexpectedChar(c))
+                        self.tok(Token::UnexpectedChar(c))
                     } else {
                         None
                     }
@@ -262,7 +262,7 @@ impl<'s> std::fmt::Display for Token<'s> {
             Token::Char(c) => write!(f, "'{}'", c.escape_default()),
             Token::UnexpectedStr(s) => write!(f, "{}", s.escape_default()),
             Token::UnexpectedChar(c) => write!(f, "{}", c.escape_default()),
-            Token::Eof => write!(f, "end-of-input")
+            Token::Eof => write!(f, "end-of-input"),
         }
     }
 }
@@ -292,6 +292,20 @@ pub fn lex_test() {
             Token::Number(14871),
         ]
     );
-    assert_eq!(l("d2!"), vec![Token::Ident("d"), Token::Number(2), Token::Op(Op::Bang)]);
-    assert_eq!(l("(3+4)*5"), vec![Token::Op(Op::LPar), Token::Number(3), Token::Op(Op::Plus), Token::Number(4), Token::Op(Op::RPar), Token::Op(Op::Star), Token::Number(5)]);
+    assert_eq!(
+        l("d2!"),
+        vec![Token::Ident("d"), Token::Number(2), Token::Op(Op::Bang)]
+    );
+    assert_eq!(
+        l("(3+4)*5"),
+        vec![
+            Token::Op(Op::LPar),
+            Token::Number(3),
+            Token::Op(Op::Plus),
+            Token::Number(4),
+            Token::Op(Op::RPar),
+            Token::Op(Op::Star),
+            Token::Number(5)
+        ]
+    );
 }
