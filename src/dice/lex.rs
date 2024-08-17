@@ -85,7 +85,7 @@ impl<'s> Iterator for Lexer<'s> {
                     self.advance();
                     self.reset();
                     // TODO escapes
-                    while self.peek() != '"' {
+                    while self.peek() != '"' && self.peek() != '\0' {
                         self.advance();
                     }
                     let res = self.so_far();
@@ -250,7 +250,7 @@ impl<'s> std::fmt::Display for Token<'s> {
             Token::Number(n) => n.fmt(f),
             Token::Op(op) => write!(f, "{}", op.as_str()),
             Token::Ident(id) => write!(f, "{}", id),
-            Token::Str(s) => write!(f, "{}", escape_string_for_discord(s)), 
+            Token::Str(s) => write!(f, "{}", escape_string_for_discord(s)),
             Token::Char(c) => write!(f, "'{}'", c.escape_default()),
             Token::Unexpected(c) => write!(f, "{}", c.escape_default()),
             Token::Eof => write!(f, "end-of-input")
