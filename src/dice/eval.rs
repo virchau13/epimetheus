@@ -229,9 +229,7 @@ impl ParseIns for Evaluator {
                 .into_i32()
                 .and_then(|v| u32::try_from(v).map_err(|_| "negative number of dice".to_string()))
                 .and_then(|v| {
-                    if v == 0 {
-                        Err("too few dice, must be at least 1".to_string())
-                    } else if v > DICE_LIMIT_SIDES {
+                    if v > DICE_LIMIT_SIDES {
                         Err(format!("too many dice: {v} > {DICE_LIMIT_SIDES}"))
                     } else {
                         Ok(v)
@@ -240,6 +238,9 @@ impl ParseIns for Evaluator {
             None => Ok(1),
         }
         .map_err(|e| anyhow::anyhow!("invalid number of dice: {:?}", e))?;
+        if num == 0 {
+            return Ok(LazyValue::Int(rug::Integer::ZERO));
+        }
         let sides;
         if let LazyValue::Array(a) = sides_raw {
             sides = RRVal::deep_resolve_vec(a, self).await?;
@@ -515,6 +516,7 @@ async fn eval_positive_test() {
     good!("#,4", 1);
     good!("#[1,2,3]", 3);
     good!(r#"#"string""#, 6);
+    good!("0d[5,6,7]", 0);
 }
 
 #[tokio::test]
