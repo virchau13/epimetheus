@@ -57,8 +57,10 @@ fn infix_prec(op: Op) -> Option<(u8, u8)> {
         Op::Slash => (15, 16),
         Op::Plus => (13, 14),
         Op::Minus => (13, 14),
-        Op::Comma => (9, 10),
-        Op::Equal => (7, 8),
+        Op::Equal => (9, 10),
+        Op::LAngle => (9, 10),
+        Op::RAngle => (9, 10),
+        Op::Comma => (7, 8),
         Op::Or => (5, 6),
         Op::Assign => (4, 3),
         Op::Semicolon => (1, 2),
@@ -68,9 +70,9 @@ fn infix_prec(op: Op) -> Option<(u8, u8)> {
 
 fn prefix_prec(op: Op) -> Option<u8> {
     Some(match op {
-        Op::Plus => 20,
-        Op::Minus => 20,
-        Op::Hash => 20,
+        Op::Plus => 40,
+        Op::Minus => 40,
+        Op::Hash => 40,
         Op::Comma => 10,
         _ => return None,
     })
@@ -78,8 +80,8 @@ fn prefix_prec(op: Op) -> Option<u8> {
 
 fn suffix_prec(op: Op) -> Option<u8> {
     Some(match op {
-        Op::Percent => 20,
-        Op::Bang => 30,
+        Op::Percent => 40,
+        Op::Bang => 50,
         _ => return None,
     })
 }
@@ -165,7 +167,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
             }
             Token::Ident("d") => {
                 self.advance();
-                let p = 40;
+                let p = 60;
                 let inner = self.expr(p).await?;
                 self.ins.dice(None, inner).await?
             }
@@ -184,7 +186,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
                     } else if op == Op::BangLPar {
                         /* precedence doesn't really work the same way here... */
                         /* it's basically a long suffix operator. */
-                        let p = 20;
+                        let p = 40;
                         if min_prec <= p {
                             self.advance();
                             let inner = self.expr(0).await?;
@@ -204,7 +206,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
                     return Ok(first);
                 }
                 Token::Ident("d") => {
-                    let (lp, rp) = (39, 40);
+                    let (lp, rp) = (59, 60);
                     if min_prec <= lp {
                         self.advance();
                         let rhs = self.expr(rp).await?;
@@ -214,7 +216,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
                     return Ok(first);
                 }
                 Token::Ident("KH" | "kh" | "Kh" | "kH" | "H" | "h" | "K") => {
-                    let (lp, rp) = (35, 36);
+                    let (lp, rp) = (55, 56);
                     if min_prec <= lp {
                         self.advance();
                         let rhs = self.expr(rp).await?;
@@ -224,7 +226,7 @@ impl<'s, I: ParseIns + Send> Parser<'s, I> {
                     return Ok(first);
                 }
                 Token::Ident("KL" | "kl" | "Kl" | "kL" | "L" | "l") => {
-                    let (lp, rp) = (35, 36);
+                    let (lp, rp) = (55, 56);
                     if min_prec <= lp {
                         self.advance();
                         let rhs = self.expr(rp).await?;

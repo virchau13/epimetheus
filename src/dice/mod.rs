@@ -1,7 +1,7 @@
 mod eval;
 mod lex;
 mod parse;
-mod value;
+pub mod value;
 
 #[cfg(not(any(test, fuzzing)))]
 fn get_rng() -> impl rand::Rng + Send {

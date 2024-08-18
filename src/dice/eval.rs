@@ -143,6 +143,8 @@ impl ParseIns for Evaluator {
                     anyhow::bail!("attempt to assign to an rvalue instead of a lvalue");
                 }
             }
+            Op::LAngle => Ok(deepres!(left, op_lt, right)),
+            Op::RAngle => Ok(deepres!(left, op_gt, right)),
             _ => anyhow::bail!("invalid infix operator `{}`", c.as_str()),
         }
     }
@@ -425,6 +427,9 @@ async fn eval_positive_test() {
         ($x:expr, $y:literal) => {
             assert_eq!(eval($x).await.unwrap().into_i32().unwrap(), $y)
         };
+        ($x:expr, [ $($e:expr),* ]) => {
+            assert_eq!(eval($x).await.unwrap(), vec![$($e),*].into())
+        };
         ($x:expr, #$y:expr) => {
             assert_eq!(eval($x).await.unwrap(), $y.into())
         };
@@ -516,6 +521,18 @@ async fn eval_positive_test() {
     good!("#,4", 1);
     good!("#[1,2,3]", 3);
     good!(r#"#"string""#, 6);
+
+    good!("1 < 3", 1);
+    good!("3 < 1", 0);
+    good!("1 > 3", 0);
+    good!("3 > 1", 1);
+
+    good!("z=0/1; n=0/0; [z < n, z == n, z > n]", [0, 0, 1]);
+    good!("n=0/0; [0 < n, 0 == n, 0 > n]", [0, 0, 1]);
+    good!("n=0/0; [n < n, n == n, n > n]", [0, 1, 0]);
+    good!("z=0/1; [0 < z, 0 == z, 0 > z]", [0, 1, 0]);
+    good!("1 < [0, 1, 2, 3]", [0, 0, 1, 1]);
+    good!("1 > [0, 1, 2, 3]", [1, 0, 0, 0]);
 
     // - fuzzing-based tests -
     good!("0d[5,6,7]", 0);

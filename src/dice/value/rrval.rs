@@ -1,10 +1,12 @@
+use std::cmp::Ordering;
+
 use async_recursion::async_recursion;
 use az::Az;
 use rug::Integer;
 
 use crate::dice::eval::Evaluator;
 
-use super::{escape_string_for_discord, LazyValue, RVal, ResolveError};
+use super::{cmp_rrvals, escape_string_for_discord, LazyValue, RVal, ResolveError};
 
 macro_rules! dimensional_broadcast {
     ($a:ident, $f:expr, $b:ident) => {
@@ -199,22 +201,31 @@ impl RRVal {
             }
             (RRVal::Array(mut a), v) => broadcast!(#a, RRVal::op_eq, v).await,
             (v, RRVal::Array(mut a)) => broadcast!(v, RRVal::op_eq, #a).await,
-            (RRVal::Int(n), RRVal::Int(m)) => RRVal::Int((n == m).into()),
-            (RRVal::Char(c), RRVal::Char(d)) => RRVal::Int((c == d).into()),
-            (RRVal::Char(c), RRVal::Int(n)) | (RRVal::Int(n), RRVal::Char(c)) => {
-                RRVal::Int((n == (c as u32)).into())
+            (l, r) => RRVal::Int((cmp_rrvals(&l, &r) == Ordering::Equal).into()),
+        }
+    }
+
+    #[async_recursion]
+    pub async fn op_lt(self, other: RRVal) -> RRVal {
+        match (self, other) {
+            (RRVal::Array(mut a), RRVal::Array(b)) => {
+                dimensional_broadcast!(a, RRVal::op_lt, b).await
             }
-            (RRVal::Char(c), RRVal::Float(f)) | (RRVal::Float(f), RRVal::Char(c)) => {
-                let f = RRVal::norm_float(f);
-                RRVal::Int((f == (c as u32 as f64)).into())
+            (RRVal::Array(mut a), v) => broadcast!(#a, RRVal::op_lt, v).await,
+            (v, RRVal::Array(mut a)) => broadcast!(v, RRVal::op_lt, #a).await,
+            (l, r) => RRVal::Int((cmp_rrvals(&l, &r) == Ordering::Less).into()),
+        }
+    }
+
+    #[async_recursion]
+    pub async fn op_gt(self, other: RRVal) -> RRVal {
+        match (self, other) {
+            (RRVal::Array(mut a), RRVal::Array(b)) => {
+                dimensional_broadcast!(a, RRVal::op_gt, b).await
             }
-            (RRVal::Int(n), RRVal::Float(f)) | (RRVal::Float(f), RRVal::Int(n)) => {
-                let f = RRVal::norm_float(f);
-                RRVal::Int((n == f).into())
-            }
-            (RRVal::Float(a), RRVal::Float(b)) => {
-                RRVal::Int((RRVal::norm_float(a) == RRVal::norm_float(b)).into())
-            }
+            (RRVal::Array(mut a), v) => broadcast!(#a, RRVal::op_gt, v).await,
+            (v, RRVal::Array(mut a)) => broadcast!(v, RRVal::op_gt, #a).await,
+            (l, r) => RRVal::Int((cmp_rrvals(&l, &r) == Ordering::Greater).into()),
         }
     }
 
@@ -261,10 +272,6 @@ impl RRVal {
             RRVal::Array(a) => !a.is_empty(),
             RRVal::Char(c) => *c != '\0',
         }
-    }
-
-    fn norm_float(f: f64) -> f64 {
-        (f * 1_000_000.) / (1_000_000.)
     }
 
     pub fn into_i32(self) -> Result<i32, String> {

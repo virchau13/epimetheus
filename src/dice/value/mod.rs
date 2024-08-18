@@ -96,7 +96,11 @@ impl std::fmt::Display for Place {
     }
 }
 
-fn cmp_rrvals(lhs: &RRVal, rhs: &RRVal) -> std::cmp::Ordering {
+fn norm_float(f: f64) -> f64 {
+    (f * 1_000_000.) / (1_000_000.)
+}
+
+pub fn cmp_rrvals(lhs: &RRVal, rhs: &RRVal) -> std::cmp::Ordering {
     use std::cmp::Ordering::*;
     match (lhs, rhs) {
         (RRVal::Int(n), RRVal::Int(m)) => n.cmp(m),
@@ -107,22 +111,28 @@ fn cmp_rrvals(lhs: &RRVal, rhs: &RRVal) -> std::cmp::Ordering {
         (RRVal::Int(n), RRVal::Char(c)) => n.partial_cmp(&(*c as u32)).unwrap(),
         (RRVal::Float(f), RRVal::Char(c)) => f.partial_cmp(&(*c as u32 as f64)).unwrap_or(Less),
         (RRVal::Char(c), RRVal::Float(f)) => (*c as u32 as f64).partial_cmp(f).unwrap_or(Greater),
-        (RRVal::Float(a), RRVal::Float(b)) => a.partial_cmp(b).unwrap_or_else(|| {
+        (RRVal::Float(a), RRVal::Float(b)) => {
             if a.is_nan() {
                 if b.is_nan() {
                     // a, b are both NaN
                     Equal // lmfao
                 } else {
                     // a is the only NaN
-                    // all is greater than NaN
-                    Greater
+                    // (NaN) is less than (any)
+                    Less
                 }
             } else {
-                // b is the only NaN
-                // NaN is less than all
-                Less
+                if b.is_nan() {
+                    // b is the only NaN
+                    // (any) is greater than (NaN)
+                    Greater
+                } else {
+                    let a = norm_float(*a);
+                    let b = norm_float(*b);
+                    a.partial_cmp(&b).unwrap()
+                }
             }
-        }),
+        }
         (RRVal::Array(a), RRVal::Array(b)) => {
             // lexographic comparison
             if a.len() != b.len() {

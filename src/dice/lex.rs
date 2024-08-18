@@ -176,6 +176,8 @@ const OP_MAP: phf::Map<char, Op> = phf_map! {
     ']' => Op::RBrack,
     '/' => Op::Slash,
     '#' => Op::Hash,
+    '<' => Op::LAngle,
+    '>' => Op::RAngle,
 };
 
 macro_rules! declare_ops {
@@ -215,6 +217,8 @@ declare_ops! {
     RBrack,
     Slash,
     Hash,
+    LAngle,
+    RAngle,
 }
 
 impl Op {
@@ -239,6 +243,8 @@ impl Op {
             Op::RBrack => "]",
             Op::Slash => "/",
             Op::Hash => "#",
+            Op::LAngle => "<",
+            Op::RAngle => ">",
         }
     }
 }
