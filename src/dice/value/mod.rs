@@ -96,76 +96,8 @@ impl std::fmt::Display for Place {
     }
 }
 
-fn norm_float(f: f64) -> f64 {
+pub fn norm_float(f: f64) -> f64 {
     (f * 1_000_000.) / (1_000_000.)
-}
-
-pub fn cmp_rrvals(lhs: &RRVal, rhs: &RRVal) -> std::cmp::Ordering {
-    use std::cmp::Ordering::*;
-    match (lhs, rhs) {
-        (RRVal::Int(n), RRVal::Int(m)) => n.cmp(m),
-        (RRVal::Int(n), RRVal::Float(f)) => n.partial_cmp(f).unwrap_or(Greater), /* All integers > NaN */
-        (RRVal::Float(f), RRVal::Int(n)) => f.partial_cmp(n).unwrap_or(Less), /* NaN < all integers */
-        (RRVal::Char(c), RRVal::Char(d)) => c.cmp(d),
-        (RRVal::Char(c), RRVal::Int(n)) => (*c as u32).partial_cmp(n).unwrap(),
-        (RRVal::Int(n), RRVal::Char(c)) => n.partial_cmp(&(*c as u32)).unwrap(),
-        (RRVal::Float(f), RRVal::Char(c)) => f.partial_cmp(&(*c as u32 as f64)).unwrap_or(Less),
-        (RRVal::Char(c), RRVal::Float(f)) => (*c as u32 as f64).partial_cmp(f).unwrap_or(Greater),
-        (RRVal::Float(a), RRVal::Float(b)) => {
-            if a.is_nan() {
-                if b.is_nan() {
-                    // a, b are both NaN
-                    Equal // lmfao
-                } else {
-                    // a is the only NaN
-                    // (NaN) is less than (any)
-                    Less
-                }
-            } else {
-                if b.is_nan() {
-                    // b is the only NaN
-                    // (any) is greater than (NaN)
-                    Greater
-                } else {
-                    let a = norm_float(*a);
-                    let b = norm_float(*b);
-                    a.partial_cmp(&b).unwrap()
-                }
-            }
-        }
-        (RRVal::Array(a), RRVal::Array(b)) => {
-            // lexographic comparison
-            if a.len() != b.len() {
-                a.len().cmp(&b.len())
-            } else {
-                a.iter()
-                    .zip(b)
-                    .find_map(|(a, b)| match cmp_rrvals(a, b) {
-                        Equal => None,
-                        result => Some(result),
-                    })
-                    .unwrap_or(Equal)
-            }
-        }
-        (v, RRVal::Array(a)) => {
-            // compare by first element
-            if let Some(first) = a.first() {
-                cmp_rrvals(v, first)
-            } else {
-                // empty arrays are below everything else
-                Less
-            }
-        }
-        (RRVal::Array(a), v) => {
-            // compare by first element
-            if let Some(first) = a.first() {
-                cmp_rrvals(first, v)
-            } else {
-                // empty arrays are below everything else
-                Greater
-            }
-        }
-    }
 }
 
 pub async fn resolve_dice(
@@ -232,7 +164,7 @@ pub async fn resolve_dice(
             };
             res.push(sample);
         }
-        res.sort_unstable_by(cmp_rrvals);
+        res.sort_unstable();
         let mut sum: Option<RRVal> = None;
         for item in res.drain(lowest_idx as usize..=highest_idx as usize) {
             if let Some(s) = sum {
@@ -257,26 +189,26 @@ impl From<f64> for LazyValue {
     }
 }
 
-pub async fn array_partition_idx(
-    a: Vec<RRVal>,
-    idx: usize,
-    take_lower: bool,
-) -> anyhow::Result<Vec<RRVal>> {
-    let mut idxs: Vec<usize> = (0..a.len()).collect();
-    let low_idx = idxs
-        .select_nth_unstable_by(idx, |i, j| cmp_rrvals(&a[*i], &a[*j]))
-        .1;
-    let low_elem = &a[*low_idx].clone();
-    Ok(a.into_iter()
-        .filter(|a| {
-            let is_lower = cmp_rrvals(a, low_elem) == std::cmp::Ordering::Less;
-            if take_lower {
-                is_lower
-            } else {
-                !is_lower
-            }
-        })
-        .collect())
+/// If `lower_half` is true, does the equivalent of
+///   1. sorting `a`
+///   2. marking the `n` lowest elements
+///   3. assembling those elements in an array,
+///      with their relative order the same as in the original array `a`.
+/// If `lower_half` is false, it does the above, but step (2) is replaced with
+///   marking the `n` highest elements.
+pub fn array_take_most_extreme_n(mut a: Vec<RRVal>, n: usize, lower_half: bool) -> Vec<RRVal> {
+    let mut indices: Vec<_> = (0..a.len()).collect();
+    indices.sort_unstable_by_key(|i| &a[*i]);
+    let which_array_half = if lower_half {
+        &indices[..n]
+    } else {
+        &indices[(a.len() - n)..]
+    };
+    let new_vals = which_array_half
+        .iter()
+        .map(|i| std::mem::replace(&mut a[*i], RRVal::Char(' ')))
+        .collect();
+    new_vals
 }
 
 pub fn escape_string_for_discord_inplace(inp: &str, s: &mut String) {

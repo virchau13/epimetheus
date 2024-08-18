@@ -4,9 +4,9 @@ use async_recursion::async_recursion;
 use az::Az;
 use rug::Integer;
 
-use crate::dice::eval::Evaluator;
+use crate::dice::{eval::Evaluator, value::norm_float};
 
-use super::{cmp_rrvals, escape_string_for_discord, LazyValue, RVal, ResolveError};
+use super::{escape_string_for_discord, LazyValue, RVal, ResolveError};
 
 macro_rules! dimensional_broadcast {
     ($a:ident, $f:expr, $b:ident) => {
@@ -51,7 +51,7 @@ macro_rules! broadcast {
 }
 
 /// Deep-resolved version of [`Value`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum RRVal {
     Int(Integer),
     Float(f64),
@@ -341,6 +341,94 @@ where
 {
     fn from(val: Vec<T>) -> Self {
         RRVal::Array(val.into_iter().map(|x| x.into()).collect())
+    }
+}
+
+impl PartialEq for RRVal {
+    fn eq(&self, other: &Self) -> bool {
+        cmp_rrvals(self, other) == Ordering::Equal
+    }
+}
+
+impl Eq for RRVal {}
+
+impl PartialOrd<RRVal> for RRVal {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RRVal {
+    fn cmp(&self, other: &Self) -> Ordering {
+        cmp_rrvals(self, other)
+    }
+}
+
+pub fn cmp_rrvals(lhs: &RRVal, rhs: &RRVal) -> std::cmp::Ordering {
+    use std::cmp::Ordering::*;
+    match (lhs, rhs) {
+        (RRVal::Int(n), RRVal::Int(m)) => n.cmp(m),
+        (RRVal::Int(n), RRVal::Float(f)) => n.partial_cmp(f).unwrap_or(Greater), /* All integers > NaN */
+        (RRVal::Float(f), RRVal::Int(n)) => f.partial_cmp(n).unwrap_or(Less), /* NaN < all integers */
+        (RRVal::Char(c), RRVal::Char(d)) => c.cmp(d),
+        (RRVal::Char(c), RRVal::Int(n)) => (*c as u32).partial_cmp(n).unwrap(),
+        (RRVal::Int(n), RRVal::Char(c)) => n.partial_cmp(&(*c as u32)).unwrap(),
+        (RRVal::Float(f), RRVal::Char(c)) => f.partial_cmp(&(*c as u32 as f64)).unwrap_or(Less),
+        (RRVal::Char(c), RRVal::Float(f)) => (*c as u32 as f64).partial_cmp(f).unwrap_or(Greater),
+        (RRVal::Float(a), RRVal::Float(b)) => {
+            if a.is_nan() {
+                if b.is_nan() {
+                    // a, b are both NaN
+                    Equal // lmfao
+                } else {
+                    // a is the only NaN
+                    // (NaN) is less than (any)
+                    Less
+                }
+            } else {
+                if b.is_nan() {
+                    // b is the only NaN
+                    // (any) is greater than (NaN)
+                    Greater
+                } else {
+                    let a = norm_float(*a);
+                    let b = norm_float(*b);
+                    a.partial_cmp(&b).unwrap()
+                }
+            }
+        }
+        (RRVal::Array(a), RRVal::Array(b)) => {
+            // lexographic comparison
+            if a.len() != b.len() {
+                a.len().cmp(&b.len())
+            } else {
+                a.iter()
+                    .zip(b)
+                    .find_map(|(a, b)| match cmp_rrvals(a, b) {
+                        Equal => None,
+                        result => Some(result),
+                    })
+                    .unwrap_or(Equal)
+            }
+        }
+        (v, RRVal::Array(a)) => {
+            // compare by first element
+            if let Some(first) = a.first() {
+                cmp_rrvals(v, first)
+            } else {
+                // empty arrays are below everything else
+                Less
+            }
+        }
+        (RRVal::Array(a), v) => {
+            // compare by first element
+            if let Some(first) = a.first() {
+                cmp_rrvals(first, v)
+            } else {
+                // empty arrays are below everything else
+                Greater
+            }
+        }
     }
 }
 

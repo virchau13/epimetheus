@@ -6,11 +6,11 @@ use smol_str::SmolStr;
 use crate::dice::{
     lex::{Op, Token},
     parse::ParseIns,
-    value::{array_partition_idx, LazyValue, RVal},
+    value::{LazyValue, RVal},
 };
 
 use super::{
-    value::{Place, RRVal, ResolveError},
+    value::{array_take_most_extreme_n, Place, RRVal, ResolveError},
     vec_into,
 };
 
@@ -309,11 +309,9 @@ impl ParseIns for Evaluator {
                 anyhow::bail!("keep-highest operation is invalid on characters".to_string())
             }
             LazyValue::Array(a) => {
-                let idx = a.len() - kh as usize;
-                Ok(LazyValue::Array(vec_into(
-                    array_partition_idx(RRVal::deep_resolve_vec(a, self).await?, idx, false)
-                        .await?,
-                )))
+                let vals = RRVal::deep_resolve_vec(a, self).await?;
+                let new_vals = array_take_most_extreme_n(vals, kh as usize, false);
+                Ok(LazyValue::Array(vec_into(new_vals)))
             }
         }
     }
@@ -356,10 +354,9 @@ impl ParseIns for Evaluator {
                 anyhow::bail!("keep-lowest operation is invalid on variable references".to_string())
             }
             LazyValue::Array(a) => {
-                let idx = kl as usize;
-                Ok(LazyValue::Array(vec_into(
-                    array_partition_idx(RRVal::deep_resolve_vec(a, self).await?, idx, true).await?,
-                )))
+                let vals = RRVal::deep_resolve_vec(a, self).await?;
+                let new_vals = array_take_most_extreme_n(vals, kl as usize, true);
+                Ok(LazyValue::Array(vec_into(new_vals)))
             }
         }
     }
@@ -534,11 +531,16 @@ async fn eval_positive_test() {
     good!("1 < [0, 1, 2, 3]", [0, 0, 1, 1]);
     good!("1 > [0, 1, 2, 3]", [1, 0, 0, 0]);
 
+    good!("[0,0,0,0] kh 3", [0, 0, 0]);
+    good!("[1,1,1,1] kl 2", [1, 1]);
+
     // - fuzzing-based tests -
     good!("0d[5,6,7]", 0);
     // special NaN check lmao
     let nanres = eval("30d(0/3,0/0,0)").await.unwrap();
-    let RRVal::Float(nanres) = nanres else { panic!("non-NaN value {nanres}") };
+    let RRVal::Float(nanres) = nanres else {
+        panic!("non-NaN value {nanres}")
+    };
     assert!(nanres.is_nan(), "non-NaN value {nanres}");
 }
 

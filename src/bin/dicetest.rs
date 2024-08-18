@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use epimetheus::dice::{
     self,
-    value::{cmp_rrvals, RRVal},
+    value::RRVal,
 };
 
 #[tokio::main(flavor = "current_thread")]
@@ -16,7 +16,7 @@ async fn main() {
             match dice::eval(rest).await {
                 Ok(val) => {
                     if let RRVal::Array(mut arr) = val {
-                        arr.sort_unstable_by(cmp_rrvals);
+                        arr.sort_unstable();
                         println!("{}", RRVal::Array(arr));
                     } else {
                         eprintln!("error: sort given not-array");
