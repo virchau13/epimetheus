@@ -272,8 +272,8 @@ impl<'s> std::fmt::Display for Token<'s> {
             Token::Char(c) => write!(f, "'{}'", c.escape_default()),
             Token::UnexpectedStr(s) => write!(f, "{}", s.escape_default()),
             Token::UnexpectedChar(c) => write!(f, "{}", c.escape_default()),
-            Token::UnexpectedEof => write!(f, "unexpected end-of-input"),
-            Token::Eof => write!(f, "end-of-input"),
+            Token::UnexpectedEof => write!(f, "<unexpected end-of-input>"),
+            Token::Eof => write!(f, "<end-of-input>"),
         }
     }
 }
