@@ -310,7 +310,13 @@ impl ParseIns for Evaluator {
             }
             LazyValue::Array(a) => {
                 let vals = RRVal::deep_resolve_vec(a, self).await?;
-                let new_vals = array_take_most_extreme_n(vals, kh as usize, false);
+                let new_vals = if kh == 0 {
+                    vec![]
+                } else if kh as usize >= vals.len() {
+                    vals
+                } else {
+                    array_take_most_extreme_n(vals, kh as usize, false)
+                };
                 Ok(LazyValue::Array(vec_into(new_vals)))
             }
         }
@@ -355,7 +361,13 @@ impl ParseIns for Evaluator {
             }
             LazyValue::Array(a) => {
                 let vals = RRVal::deep_resolve_vec(a, self).await?;
-                let new_vals = array_take_most_extreme_n(vals, kl as usize, true);
+                let new_vals = if kl == 0 {
+                    vec![]
+                } else if kl as usize >= vals.len() {
+                    vals
+                } else {
+                    array_take_most_extreme_n(vals, kl as usize, true)
+                };
                 Ok(LazyValue::Array(vec_into(new_vals)))
             }
         }
@@ -424,8 +436,11 @@ async fn eval_positive_test() {
         ($x:expr, $y:literal) => {
             assert_eq!(eval($x).await.unwrap().into_i32().unwrap(), $y)
         };
-        ($x:expr, [ $($e:expr),* ]) => {
+        ($x:expr, [ $($e:expr),+ ]) => {
             assert_eq!(eval($x).await.unwrap(), vec![$($e),*].into())
+        };
+        ($x:expr, []) => {
+            assert_eq!(eval($x).await.unwrap(), RRVal::Array(vec![]))
         };
         ($x:expr, #$y:expr) => {
             assert_eq!(eval($x).await.unwrap(), $y.into())
@@ -533,6 +548,10 @@ async fn eval_positive_test() {
 
     good!("[0,0,0,0] kh 3", [0, 0, 0]);
     good!("[1,1,1,1] kl 2", [1, 1]);
+    good!("[0,0,0,0] kh 999", [0, 0, 0, 0]);
+    good!("[1,2,3,4] kh 0", []);
+    good!("[1,2,3,4] kl 4", [1, 2, 3, 4]);
+    good!("[1,2,3,4] kl 0", []);
 
     // - fuzzing-based tests -
     good!("0d[5,6,7]", 0);
