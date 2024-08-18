@@ -1,51 +1,41 @@
 {
-  description = "Discord bot";
+  description = "A Discord bot";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-
-    crane = {
-      url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    flake-utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = "nixpkgs/nixos-unstable";
+    utils.url = "github:numtide/flake-utils";
+    fenix.url = "github:nix-community/fenix/monthly";
   };
 
-  outputs = { self, nixpkgs, crane, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = nixpkgs.legacyPackages.${system};
+  outputs = { self, nixpkgs, utils, fenix }: utils.lib.eachDefaultSystem(system: let
+    pkgs = import nixpkgs { inherit system; };
+    deps = with pkgs; [ m4 aflplusplus pkg-config ];
+    cargo-afl = pkgs.callPackage ./cargo-afl.nix {};
+    devDeps = deps; # ++ [ cargo-afl ];
+  in {
+    packages = rec {
+      epimetheus = with pkgs; rustPlatform.buildRustPackage  {
+        pname = "epimetheus";
+        version = "0.1.0";
 
-        craneLib = crane.mkLib pkgs;
+        src = ./.;
 
-        epimetheus = craneLib.buildPackage {
-          pname = "epimetheus";
-          version = "0.1.0";
+        buildInputs = deps;
+        nativeBuildInputs = deps;
 
-          src = craneLib.cleanCargoSource ./.;
-          strictDeps = true;
-
-          buildInputs = with pkgs; [
-            pkg-config
-            m4
-            aflplusplus
-          ];
+        cargoLock = {
+          lockFile = ./Cargo.lock;
         };
-      in
-      {
-        checks = { inherit epimetheus; };
-
-        packages.default = epimetheus;
-
-        apps.default = flake-utils.lib.mkApp {
-          drv = epimetheus;
-        };
-
-        devShells.default = craneLib.devShell {
-          checks = self.checks.${system};
-          packages = epimetheus.buildInputs;
-          LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath epimetheus.buildInputs}";
-        };
-      });
+      };
+      default = epimetheus;
+    };
+    devShells = {
+      default = with pkgs; mkShell {
+        buildInputs = devDeps;
+      };
+      nightly = with pkgs; mkShell {
+        buildInputs = devDeps ++ [ fenix.packages.${system}.default.toolchain ];
+      };
+    };
+  });
 }
